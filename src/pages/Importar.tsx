@@ -19,7 +19,7 @@ import {
 import { UploadCloud, CheckCircle2, FileSpreadsheet, AlertCircle } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
 import { useAuth } from '@/hooks/use-auth'
-import { categorizeTransactions, type CategorizeResult } from '@/services/imports'
+import { categorizeTransactions, processPdf, type CategorizeResult } from '@/services/imports'
 import { createTransaction } from '@/services/transactions'
 import { getAccounts } from '@/services/accounts'
 import { prepareTransactionData, formatCurrency } from '@/lib/finance-utils'
@@ -66,18 +66,27 @@ export default function Importar() {
     try {
       const accs = await getAccounts()
       setAccounts(accs)
-      const text = await file.text()
-      const rows = parseCSV(text)
-      if (rows.length === 0) {
-        toast({ title: 'Nenhuma linha válida encontrada', variant: 'destructive' })
-        setIsProcessing(false)
-        return
+      if (file.name.toLowerCase().endsWith('.pdf')) {
+        const { transactions: categorized } = await processPdf(file, bankSource)
+        setResults(categorized)
+      } else {
+        const text = await file.text()
+        const rows = parseCSV(text)
+        if (rows.length === 0) {
+          toast({ title: 'Nenhuma linha válida encontrada', variant: 'destructive' })
+          setIsProcessing(false)
+          return
+        }
+        const { transactions: categorized } = await categorizeTransactions(rows)
+        setResults(categorized)
       }
-      const { transactions: categorized } = await categorizeTransactions(rows)
-      setResults(categorized)
       setStep(3)
-    } catch (e) {
-      toast({ title: 'Erro ao processar arquivo', variant: 'destructive' })
+    } catch (e: any) {
+      toast({
+        title: 'Erro ao processar arquivo',
+        description: e?.response?.error || e?.message || undefined,
+        variant: 'destructive',
+      })
     }
     setIsProcessing(false)
   }
@@ -174,15 +183,15 @@ export default function Importar() {
                 <UploadCloud className="w-8 h-8 text-emerald-600" />
               </div>
               <h3 className="text-lg font-semibold text-slate-900 mb-1">
-                Arraste e solte o arquivo CSV aqui
+                Arraste e solte o arquivo CSV ou PDF aqui
               </h3>
               <p className="text-slate-500 text-sm mb-6 max-w-sm">
-                Suporte para arquivos .csv. A IA categorizará automaticamente.
+                Suporte para arquivos .csv e .pdf. A IA extrairá e categorizará automaticamente.
               </p>
               <input
                 ref={fileRef}
                 type="file"
-                accept=".csv"
+                accept=".csv,.pdf"
                 className="hidden"
                 onChange={handleFileSelect}
               />
@@ -201,9 +210,7 @@ export default function Importar() {
           <CardContent className="p-12 text-center">
             <div className="animate-spin w-12 h-12 border-4 border-emerald-600 border-t-transparent rounded-full mx-auto mb-4" />
             <h3 className="text-lg font-semibold text-slate-900">Processando com IA...</h3>
-            <p className="text-slate-500 text-sm">
-              Categorizando transações e aplicando regras de OCR.
-            </p>
+            <p className="text-slate-500 text-sm">Extraindo e categorizando transações com IA.</p>
           </CardContent>
         )}
 

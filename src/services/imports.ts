@@ -38,3 +38,27 @@ export const createImport = (data: FormData) => pb.collection<ImportRecord>('imp
 
 export const getImports = () =>
   pb.collection<ImportRecord>('imports').getFullList({ sort: '-created' })
+
+export const processPdf = (file: File, bankSource: string) =>
+  new Promise<{ transactions: CategorizeResult[]; import_id: string }>((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      const base64 = (reader.result as string).split(',')[1]
+      pb.send<{ transactions: CategorizeResult[]; import_id: string }>(
+        '/backend/v1/imports/pdf-process',
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            file_data: base64,
+            file_name: file.name,
+            bank_source: bankSource,
+          }),
+          headers: { 'Content-Type': 'application/json' },
+        },
+      )
+        .then(resolve)
+        .catch(reject)
+    }
+    reader.onerror = () => reject(new Error('Falha ao ler arquivo'))
+    reader.readAsDataURL(file)
+  })
