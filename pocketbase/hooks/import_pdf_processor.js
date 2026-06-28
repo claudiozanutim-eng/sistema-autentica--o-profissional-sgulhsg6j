@@ -1,4 +1,3 @@
-// @deps pako@2.1.0
 routerAdd(
   'POST',
   '/backend/v1/imports/pdf-process',
@@ -33,25 +32,11 @@ routerAdd(
       var raw = ''
       for (var i = 0; i < bytes.length; i++) raw += String.fromCharCode(bytes[i])
       var text = ''
-      var pako = null
-      try {
-        pako = require('pako')
-      } catch (_) {}
       var streamRegex = /stream\r?\n([\s\S]*?)endstream/g
       var match
       while ((match = streamRegex.exec(raw)) !== null) {
         var streamData = match[1]
         var decoded = streamData
-        if (pako) {
-          try {
-            var compressed = new Uint8Array(streamData.length)
-            for (var j = 0; j < streamData.length; j++)
-              compressed[j] = streamData.charCodeAt(j) & 0xff
-            var inflated = pako.inflate(compressed)
-            decoded = ''
-            for (var k = 0; k < inflated.length; k++) decoded += String.fromCharCode(inflated[k])
-          } catch (_) {}
-        }
         var tjMatches = decoded.match(/\(([^)]*)\)\s*Tj/g)
         if (tjMatches)
           tjMatches.forEach(function (m) {
