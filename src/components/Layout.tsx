@@ -65,8 +65,13 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
 function SidebarContent() {
   return (
     <>
-      <div className="h-16 flex items-center px-6 bg-slate-950 font-bold text-white text-xl tracking-tight">
-        Navaar<span className="text-emerald-500">Finance</span>
+      <div className="h-16 flex items-center gap-2.5 px-6 bg-slate-950">
+        <img
+          src="https://img.usecurling.com/i?q=ohana&color=white&shape=fill"
+          alt="OHANA"
+          className="h-8 w-auto object-contain flex-shrink-0"
+        />
+        <span className="font-bold text-white text-xl tracking-tight">OHANA</span>
       </div>
       <NavLinks />
     </>

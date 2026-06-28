@@ -43,9 +43,7 @@ export default function Login() {
           <div className="w-12 h-12 bg-emerald-600 rounded-lg flex items-center justify-center mb-2 mx-auto shadow-lg shadow-emerald-900/50">
             <LockKeyhole className="w-6 h-6 text-white" />
           </div>
-          <CardTitle className="text-2xl text-center font-bold tracking-tight">
-            Navaar Finance Engine
-          </CardTitle>
+          <CardTitle className="text-2xl text-center font-bold tracking-tight">OHANA</CardTitle>
           <CardDescription className="text-center text-slate-400">
             Insira suas credenciais corporativas para acessar o sistema.
           </CardDescription>
