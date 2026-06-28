@@ -3,6 +3,7 @@ import { Toaster } from '@/components/ui/toaster'
 import { Toaster as Sonner } from '@/components/ui/sonner'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { AuthProvider } from '@/hooks/use-auth'
+import { AppStoreProvider } from '@/stores/main'
 
 import Layout from '@/components/Layout'
 import { ProtectedRoute } from '@/components/ProtectedRoute'
@@ -19,26 +20,28 @@ import NotFound from '@/pages/NotFound'
 const App = () => (
   <BrowserRouter>
     <AuthProvider>
-      <TooltipProvider>
-        <Toaster />
-        <Sonner />
-        <Routes>
-          <Route path="/login" element={<Login />} />
+      <AppStoreProvider>
+        <TooltipProvider>
+          <Toaster />
+          <Sonner />
+          <Routes>
+            <Route path="/login" element={<Login />} />
 
-          <Route element={<ProtectedRoute />}>
-            <Route element={<Layout />}>
-              <Route path="/" element={<Index />} />
-              <Route path="/dashboard" element={<Dashboard />} />
-              <Route path="/lancamentos" element={<Lancamentos />} />
-              <Route path="/importar" element={<Importar />} />
-              <Route path="/analises" element={<Analises />} />
-              <Route path="/config" element={<Config />} />
+            <Route element={<ProtectedRoute />}>
+              <Route element={<Layout />}>
+                <Route path="/" element={<Index />} />
+                <Route path="/dashboard" element={<Dashboard />} />
+                <Route path="/lancamentos" element={<Lancamentos />} />
+                <Route path="/importar" element={<Importar />} />
+                <Route path="/analises" element={<Analises />} />
+                <Route path="/config" element={<Config />} />
+              </Route>
             </Route>
-          </Route>
 
-          <Route path="*" element={<NotFound />} />
-        </Routes>
-      </TooltipProvider>
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </TooltipProvider>
+      </AppStoreProvider>
     </AuthProvider>
   </BrowserRouter>
 )
