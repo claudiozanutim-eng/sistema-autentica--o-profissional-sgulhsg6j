@@ -15,16 +15,12 @@ export default function Login() {
   const { signIn, isAuthenticated } = useAuth()
   const { toast } = useToast()
 
-  if (isAuthenticated) {
-    return <Navigate to="/" replace />
-  }
+  if (isAuthenticated) return <Navigate to="/dashboard" replace />
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
-
     const { error } = await signIn(email, password)
-
     if (error) {
       toast({
         title: 'Falha na autenticação',
@@ -32,24 +28,23 @@ export default function Login() {
         variant: 'destructive',
       })
     }
-
     setIsLoading(false)
   }
 
   return (
     <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-1/2 -right-1/2 w-full h-full bg-gradient-to-b from-blue-600/10 to-transparent rounded-full blur-3xl transform rotate-12" />
-        <div className="absolute -bottom-1/2 -left-1/2 w-full h-full bg-gradient-to-t from-green-600/10 to-transparent rounded-full blur-3xl transform -rotate-12" />
+        <div className="absolute -top-1/2 -right-1/2 w-full h-full bg-gradient-to-b from-emerald-600/10 to-transparent rounded-full blur-3xl transform rotate-12" />
+        <div className="absolute -bottom-1/2 -left-1/2 w-full h-full bg-gradient-to-t from-blue-600/10 to-transparent rounded-full blur-3xl transform -rotate-12" />
       </div>
 
       <Card className="w-full max-w-md shadow-2xl border-slate-800 bg-slate-950 text-slate-100 z-10 animate-fade-in-up">
         <CardHeader className="space-y-3 pb-6">
-          <div className="w-12 h-12 bg-blue-600 rounded-lg flex items-center justify-center mb-2 mx-auto shadow-lg shadow-blue-900/50">
+          <div className="w-12 h-12 bg-emerald-600 rounded-lg flex items-center justify-center mb-2 mx-auto shadow-lg shadow-emerald-900/50">
             <LockKeyhole className="w-6 h-6 text-white" />
           </div>
           <CardTitle className="text-2xl text-center font-bold tracking-tight">
-            Acesso Executivo
+            Navaar Finance Engine
           </CardTitle>
           <CardDescription className="text-center text-slate-400">
             Insira suas credenciais corporativas para acessar o sistema.
@@ -68,7 +63,7 @@ export default function Login() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
-                className="bg-slate-900 border-slate-700 text-white placeholder:text-slate-500 focus-visible:ring-blue-500"
+                className="bg-slate-900 border-slate-700 text-white placeholder:text-slate-500 focus-visible:ring-emerald-500"
               />
             </div>
             <div className="space-y-2">
@@ -76,7 +71,10 @@ export default function Login() {
                 <Label htmlFor="password" className="text-slate-300">
                   Senha
                 </Label>
-                <a href="#" className="text-xs text-blue-400 hover:text-blue-300 transition-colors">
+                <a
+                  href="#"
+                  className="text-xs text-emerald-400 hover:text-emerald-300 transition-colors"
+                >
                   Esqueceu a senha?
                 </a>
               </div>
@@ -86,12 +84,12 @@ export default function Login() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
-                className="bg-slate-900 border-slate-700 text-white focus-visible:ring-blue-500"
+                className="bg-slate-900 border-slate-700 text-white focus-visible:ring-emerald-500"
               />
             </div>
             <Button
               type="submit"
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white transition-colors h-11"
+              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white transition-colors h-11"
               disabled={isLoading}
             >
               {isLoading ? 'Autenticando...' : 'Entrar no Sistema'}

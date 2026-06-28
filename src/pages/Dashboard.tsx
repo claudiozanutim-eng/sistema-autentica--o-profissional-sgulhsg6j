@@ -1,160 +1,253 @@
 import { useEffect, useState, useMemo } from 'react'
 import { getTransactions, type Transaction } from '@/services/transactions'
+import { getAccounts } from '@/services/accounts'
 import { useRealtime } from '@/hooks/use-realtime'
+import { useAppStore } from '@/stores/main'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { ArrowDownRight, ArrowUpRight, DollarSign, Activity, Clock } from 'lucide-react'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart'
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer } from 'recharts'
+import {
+  BarChart,
+  Bar,
+  PieChart,
+  Pie,
+  Cell,
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  ResponsiveContainer,
+  Legend,
+} from 'recharts'
+import { ArrowDownRight, ArrowUpRight, DollarSign, Clock } from 'lucide-react'
+import {
+  formatCurrency,
+  AVAILABLE_YEARS,
+  MONTH_NAMES_PT,
+  MONTH_LABELS_PT,
+} from '@/lib/finance-utils'
+
+const PIE_COLORS = ['#1E3A5F', '#10B981', '#EF4444', '#F59E0B', '#8B5CF6', '#06B6D4', '#EC4899']
 
 export default function Dashboard() {
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [loading, setLoading] = useState(true)
+  const { selectedYear, setSelectedYear, selectedMonth, setSelectedMonth } = useAppStore()
 
   const loadData = async () => {
     try {
-      const data = await getTransactions()
-      setTransactions(data)
-    } catch (error) {
-      console.error('Failed to load dashboard data', error)
+      setTransactions(await getTransactions(selectedYear))
+    } catch (e) {
+      console.error(e)
     } finally {
       setLoading(false)
     }
   }
-
   useEffect(() => {
     loadData()
-  }, [])
-  useRealtime('transactions', () => {
-    loadData()
-  })
+  }, [selectedYear])
+  useRealtime('transactions', () => loadData())
+
+  const filtered = useMemo(
+    () =>
+      selectedMonth !== null
+        ? transactions.filter((t) => new Date(t.date).getMonth() === selectedMonth)
+        : transactions,
+    [transactions, selectedMonth],
+  )
 
   const stats = useMemo(() => {
-    let income = 0
-    let expense = 0
-    let pendingCount = 0
-
-    transactions.forEach((t) => {
+    let income = 0,
+      expense = 0,
+      pending = 0
+    filtered.forEach((t) => {
       if (t.type === 'income') income += t.amount
-      if (t.type === 'expense') expense += t.amount
-      if (t.status === 'pending') pendingCount++
+      else expense += t.amount
+      if (t.status === 'pending') pending += t.amount
     })
+    return { income, expense, profit: income - expense, pending }
+  }, [filtered])
 
-    return { income, expense, profit: income - expense, pendingCount }
-  }, [transactions])
+  const pieData = useMemo(() => {
+    const map: Record<string, number> = {}
+    filtered
+      .filter((t) => t.type === 'expense')
+      .forEach((t) => {
+        const g = t.group || 'Outros'
+        map[g] = (map[g] || 0) + t.amount
+      })
+    return Object.entries(map).map(([name, value]) => ({ name, value }))
+  }, [filtered])
 
-  const chartData = useMemo(() => {
-    const dataByDate: Record<string, { date: string; income: number; expense: number }> = {}
-    const last7Days = Array.from({ length: 7 }).map((_, i) => {
-      const d = new Date()
-      d.setDate(d.getDate() - (6 - i))
-      return d.toISOString().split('T')[0]
+  const barData = useMemo(() => {
+    const map: Record<string, { month: string; income: number; expense: number }> = {}
+    MONTH_NAMES_PT.forEach((m) => {
+      map[m] = { month: m, income: 0, expense: 0 }
     })
-
-    last7Days.forEach((date) => {
-      dataByDate[date] = { date: date.slice(5), income: 0, expense: 0 }
-    })
-
     transactions.forEach((t) => {
-      const d = t.date.split(' ')[0]
-      if (dataByDate[d]) {
-        if (t.type === 'income') dataByDate[d].income += t.amount
-        else dataByDate[d].expense += t.amount
+      const m = MONTH_NAMES_PT[new Date(t.date).getMonth()]
+      if (map[m]) {
+        if (t.type === 'income') map[m].income += t.amount
+        else map[m].expense += t.amount
       }
     })
-
-    return Object.values(dataByDate)
+    return Object.values(map)
   }, [transactions])
 
-  const formatCurrency = (value: number) =>
-    new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value)
+  const areaData = useMemo(() => {
+    let cumulative = 0
+    return barData.map((d) => {
+      cumulative += d.income - d.expense
+      return { month: d.month, balance: cumulative }
+    })
+  }, [barData])
 
-  if (loading)
-    return (
-      <div className="animate-pulse flex gap-4">
-        <div className="h-32 bg-slate-200 rounded-xl w-full"></div>
-      </div>
-    )
+  if (loading) return <div className="h-32 bg-slate-200 rounded-xl animate-pulse" />
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+      <div className="flex flex-col sm:flex-row justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Visão Geral</h1>
-          <p className="text-slate-500 text-sm mt-1">Acompanhamento financeiro em tempo real.</p>
+          <h1 className="text-2xl font-bold text-slate-900">Visão Geral</h1>
+          <p className="text-slate-500 text-sm">Acompanhamento financeiro em tempo real.</p>
+        </div>
+        <div className="flex gap-2">
+          <Select value={String(selectedYear)} onValueChange={(v) => setSelectedYear(Number(v))}>
+            <SelectTrigger className="w-28">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {AVAILABLE_YEARS.map((y) => (
+                <SelectItem key={y} value={String(y)}>
+                  {y}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select
+            value={selectedMonth === null ? 'all' : String(selectedMonth)}
+            onValueChange={(v) => setSelectedMonth(v === 'all' ? null : Number(v))}
+          >
+            <SelectTrigger className="w-36">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos os meses</SelectItem>
+              {MONTH_LABELS_PT.map((m, i) => (
+                <SelectItem key={i} value={String(i)}>
+                  {m}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <Card className="hover:shadow-md transition-shadow border-slate-200">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-slate-500">Receita Total</CardTitle>
-            <div className="w-8 h-8 bg-green-100 text-green-600 rounded-full flex items-center justify-center">
-              <ArrowUpRight className="w-4 h-4" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-slate-900">{formatCurrency(stats.income)}</div>
-          </CardContent>
-        </Card>
-
-        <Card className="hover:shadow-md transition-shadow border-slate-200">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-slate-500">Despesas Totais</CardTitle>
-            <div className="w-8 h-8 bg-red-100 text-red-600 rounded-full flex items-center justify-center">
-              <ArrowDownRight className="w-4 h-4" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-slate-900">{formatCurrency(stats.expense)}</div>
-          </CardContent>
-        </Card>
-
-        <Card className="hover:shadow-md transition-shadow border-slate-200">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-slate-500">Lucro Líquido</CardTitle>
-            <div className="w-8 h-8 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center">
-              <DollarSign className="w-4 h-4" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-slate-900">{formatCurrency(stats.profit)}</div>
-          </CardContent>
-        </Card>
-
-        <Card className="hover:shadow-md transition-shadow border-slate-200">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-slate-500">Tarefas Pendentes</CardTitle>
-            <div className="w-8 h-8 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center">
-              <Clock className="w-4 h-4" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-slate-900">{stats.pendingCount}</div>
-          </CardContent>
-        </Card>
+        {[
+          {
+            label: 'Receita Total',
+            value: stats.income,
+            icon: ArrowUpRight,
+            color: 'bg-emerald-100 text-emerald-600',
+          },
+          {
+            label: 'Despesas Totais',
+            value: stats.expense,
+            icon: ArrowDownRight,
+            color: 'bg-red-100 text-red-600',
+          },
+          {
+            label: 'Lucro Líquido',
+            value: stats.profit,
+            icon: DollarSign,
+            color: 'bg-blue-100 text-blue-600',
+          },
+          {
+            label: 'Pendentes',
+            value: stats.pending,
+            icon: Clock,
+            color: 'bg-amber-100 text-amber-600',
+          },
+        ].map((s) => (
+          <Card key={s.label} className="hover:shadow-md transition-shadow border-slate-200">
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-sm font-medium text-slate-500">{s.label}</CardTitle>
+              <div className={`w-8 h-8 ${s.color} rounded-full flex items-center justify-center`}>
+                <s.icon className="w-4 h-4" />
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-slate-900">{formatCurrency(s.value)}</div>
+            </CardContent>
+          </Card>
+        ))}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <Card className="lg:col-span-2 border-slate-200">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <Card className="border-slate-200">
           <CardHeader>
-            <CardTitle className="text-base font-semibold text-slate-800 flex items-center gap-2">
-              <Activity className="w-4 h-4 text-slate-400" />
-              Tendência Semanal
+            <CardTitle className="text-base font-semibold text-slate-800">
+              Despesas por Grupo
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="h-[300px]">
+            {pieData.length > 0 ? (
+              <ChartContainer config={{}} className="h-full w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={pieData}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={60}
+                      outerRadius={100}
+                      paddingAngle={3}
+                      dataKey="value"
+                    >
+                      {pieData.map((_, i) => (
+                        <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <ChartTooltip content={<ChartTooltipContent />} />
+                    <Legend verticalAlign="bottom" height={36} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </ChartContainer>
+            ) : (
+              <div className="h-full flex items-center justify-center text-slate-400">
+                Sem dados
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="border-slate-200">
+          <CardHeader>
+            <CardTitle className="text-base font-semibold text-slate-800">
+              Receitas vs Despesas
             </CardTitle>
           </CardHeader>
           <CardContent className="h-[300px]">
             <ChartContainer
               config={{
-                income: { label: 'Receitas', color: '#15803d' },
-                expense: { label: 'Despesas', color: '#dc2626' },
+                income: { label: 'Receitas', color: '#10B981' },
+                expense: { label: 'Despesas', color: '#EF4444' },
               }}
               className="h-full w-full"
             >
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                <BarChart data={barData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
                   <XAxis
-                    dataKey="date"
+                    dataKey="month"
                     axisLine={false}
                     tickLine={false}
                     tick={{ fill: '#64748b', fontSize: 12 }}
@@ -165,60 +258,73 @@ export default function Dashboard() {
                     tickLine={false}
                     tick={{ fill: '#64748b', fontSize: 12 }}
                     dx={-10}
-                    tickFormatter={(v) => `R$ ${v / 1000}k`}
+                    tickFormatter={(v) => `${v / 1000}k`}
                   />
                   <ChartTooltip content={<ChartTooltipContent />} />
                   <Bar
                     dataKey="income"
                     fill="var(--color-income)"
                     radius={[4, 4, 0, 0]}
-                    maxBarSize={40}
+                    maxBarSize={30}
                   />
                   <Bar
                     dataKey="expense"
                     fill="var(--color-expense)"
                     radius={[4, 4, 0, 0]}
-                    maxBarSize={40}
+                    maxBarSize={30}
                   />
                 </BarChart>
               </ResponsiveContainer>
             </ChartContainer>
           </CardContent>
         </Card>
-
-        <Card className="border-slate-200 flex flex-col">
-          <CardHeader>
-            <CardTitle className="text-base font-semibold text-slate-800">
-              Atividade Recente
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="flex-1 overflow-auto">
-            <div className="space-y-4">
-              {transactions.slice(0, 5).map((t) => (
-                <div
-                  key={t.id}
-                  className="flex items-center justify-between border-b border-slate-100 pb-3 last:border-0 last:pb-0"
-                >
-                  <div>
-                    <p className="text-sm font-medium text-slate-900 truncate max-w-[150px]">
-                      {t.description}
-                    </p>
-                    <p className="text-xs text-slate-500">
-                      {new Date(t.date).toLocaleDateString('pt-BR')}
-                    </p>
-                  </div>
-                  <span
-                    className={`text-sm font-bold ${t.type === 'income' ? 'text-green-600' : 'text-red-600'}`}
-                  >
-                    {t.type === 'income' ? '+' : '-'}
-                    {formatCurrency(t.amount)}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
       </div>
+
+      <Card className="border-slate-200">
+        <CardHeader>
+          <CardTitle className="text-base font-semibold text-slate-800">Saldo Acumulado</CardTitle>
+        </CardHeader>
+        <CardContent className="h-[280px]">
+          <ChartContainer
+            config={{ balance: { label: 'Saldo', color: '#1E3A5F' } }}
+            className="h-full w-full"
+          >
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={areaData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="colorBalance" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#1E3A5F" stopOpacity={0.3} />
+                    <stop offset="95%" stopColor="#1E3A5F" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                <XAxis
+                  dataKey="month"
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{ fill: '#64748b', fontSize: 12 }}
+                  dy={10}
+                />
+                <YAxis
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{ fill: '#64748b', fontSize: 12 }}
+                  dx={-10}
+                  tickFormatter={(v) => `${v / 1000}k`}
+                />
+                <ChartTooltip content={<ChartTooltipContent />} />
+                <Area
+                  type="monotone"
+                  dataKey="balance"
+                  stroke="#1E3A5F"
+                  fillOpacity={1}
+                  fill="url(#colorBalance)"
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          </ChartContainer>
+        </CardContent>
+      </Card>
     </div>
   )
 }

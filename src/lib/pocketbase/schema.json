@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-06-28T16:22:05.291Z",
+  "generatedAt": "2026-06-28T16:35:02.688Z",
   "collections": [
     {
       "name": "users",
@@ -113,12 +113,245 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "account_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "accounts"
+        },
+        {
+          "name": "year",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "month_year",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "group",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "source",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "origin",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["manual", "import"]
         }
       ],
       "indexes": [
         "CREATE INDEX idx_transactions_date ON transactions (date DESC)",
         "CREATE INDEX idx_transactions_user ON transactions (user_id)"
       ]
+    },
+    {
+      "name": "chart_of_accounts",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "group",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "category",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "type",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["income", "expense"]
+        },
+        {
+          "name": "ocr_terms",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "code",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "active",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": []
+    },
+    {
+      "name": "accounts",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "name",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "type",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "bank",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "initial_balance",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "active",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": []
+    },
+    {
+      "name": "imports",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "file",
+          "type": "file",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "file_type",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "bank_source",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["processing", "completed", "error"]
+        },
+        {
+          "name": "transactions_json",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "error_message",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": []
     }
   ]
 }

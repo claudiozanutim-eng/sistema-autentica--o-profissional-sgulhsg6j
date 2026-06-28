@@ -1,12 +1,14 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import {
   getTransactions,
   createTransaction,
   deleteTransaction,
   type Transaction,
 } from '@/services/transactions'
+import { getAccounts, type Account } from '@/services/accounts'
 import { useRealtime } from '@/hooks/use-realtime'
 import { useAuth } from '@/hooks/use-auth'
+import { useAppStore } from '@/stores/main'
 import { Card, CardContent } from '@/components/ui/card'
 import {
   Table,
@@ -33,98 +35,148 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog'
-import { Plus, Search, Trash2 } from 'lucide-react'
+import { Plus, Search, Trash2, ChevronLeft, ChevronRight } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
+import {
+  formatCurrency,
+  detectTransfers,
+  prepareTransactionData,
+  MONTH_NAMES_PT,
+  MONTH_LABELS_PT,
+} from '@/lib/finance-utils'
+
+const PAGE_SIZE = 50
 
 export default function Lancamentos() {
   const [transactions, setTransactions] = useState<Transaction[]>([])
-  const [searchTerm, setSearchTerm] = useState('')
+  const [accounts, setAccounts] = useState<Account[]>([])
+  const [search, setSearch] = useState('')
+  const [page, setPage] = useState(0)
+  const [filterGroup, setFilterGroup] = useState('all')
+  const [filterAccount, setFilterAccount] = useState('all')
+  const [filterStatus, setFilterStatus] = useState('all')
   const [isOpen, setIsOpen] = useState(false)
   const { user } = useAuth()
   const { toast } = useToast()
+  const { selectedYear } = useAppStore()
 
-  const [formData, setFormData] = useState({
+  const [form, setForm] = useState({
     description: '',
     amount: '',
     type: 'expense',
     category: '',
+    group: '',
     status: 'pending',
     date: new Date().toISOString().split('T')[0],
+    account_id: '',
   })
 
   const loadData = async () => {
     try {
-      setTransactions(await getTransactions())
+      const [tx, acc] = await Promise.all([getTransactions(selectedYear), getAccounts()])
+      setTransactions(tx)
+      setAccounts(acc)
     } catch (e) {
       console.error(e)
     }
   }
-
   useEffect(() => {
     loadData()
-  }, [])
-  useRealtime('transactions', () => {
-    loadData()
-  })
+  }, [selectedYear])
+  useRealtime('transactions', () => loadData())
 
-  const formatCurrency = (value: number) =>
-    new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value)
+  const transferIds = useMemo(() => detectTransfers(transactions), [transactions])
+
+  const filtered = useMemo(
+    () =>
+      transactions.filter((t) => {
+        if (
+          search &&
+          !t.description.toLowerCase().includes(search.toLowerCase()) &&
+          !t.category.toLowerCase().includes(search.toLowerCase())
+        )
+          return false
+        if (filterGroup !== 'all' && t.group !== filterGroup) return false
+        if (filterAccount !== 'all' && t.account_id !== filterAccount) return false
+        if (filterStatus !== 'all' && t.status !== filterStatus) return false
+        return true
+      }),
+    [transactions, search, filterGroup, filterAccount, filterStatus],
+  )
+
+  const paginated = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
+  const totalPages = Math.ceil(filtered.length / PAGE_SIZE)
+
+  const balances = useMemo(() => {
+    let income = 0,
+      expense = 0,
+      pending = 0
+    transactions.forEach((t) => {
+      if (t.type === 'income') income += t.amount
+      else expense += t.amount
+      if (t.status === 'pending') pending += t.amount
+    })
+    const consolidated = income - expense
+    return { month: income - expense, consolidated, available: consolidated - pending }
+  }, [transactions])
+
+  const groups = [...new Set(transactions.map((t) => t.group).filter(Boolean))]
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!user) return
-
     try {
-      await createTransaction({
-        ...formData,
-        amount: Number(formData.amount),
-        type: formData.type as any,
-        status: formData.status as any,
-        user_id: user.id,
-        date: new Date(formData.date).toISOString(),
-      })
+      await createTransaction(
+        prepareTransactionData(
+          {
+            ...form,
+            amount: Number(form.amount),
+            type: form.type as any,
+            status: form.status as any,
+            user_id: user.id,
+            account_id: form.account_id || accounts[0]?.id || '',
+          },
+          user.id,
+          'manual',
+        ),
+      )
       setIsOpen(false)
-      setFormData({
+      setForm({
         description: '',
         amount: '',
         type: 'expense',
         category: '',
+        group: '',
         status: 'pending',
         date: new Date().toISOString().split('T')[0],
+        account_id: '',
       })
       toast({ title: 'Lançamento criado com sucesso.' })
-    } catch (err) {
+    } catch {
       toast({ title: 'Erro ao criar', variant: 'destructive' })
     }
   }
 
   const handleDelete = async (id: string) => {
-    if (confirm('Deseja excluir este lançamento?')) {
-      try {
-        await deleteTransaction(id)
-        toast({ title: 'Excluído com sucesso.' })
-      } catch (err) {
-        toast({ title: 'Erro ao excluir', variant: 'destructive' })
-      }
+    if (!confirm('Deseja excluir este lançamento?')) return
+    try {
+      await deleteTransaction(id)
+      toast({ title: 'Excluído com sucesso.' })
+    } catch {
+      toast({ title: 'Erro ao excluir', variant: 'destructive' })
     }
   }
 
-  const filtered = transactions.filter(
-    (t) =>
-      t.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      t.category.toLowerCase().includes(searchTerm.toLowerCase()),
-  )
-
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+      <div className="flex flex-col sm:flex-row justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Lançamentos</h1>
           <p className="text-slate-500 text-sm">Gestão detalhada de transações financeiras.</p>
         </div>
         <Dialog open={isOpen} onOpenChange={setIsOpen}>
           <DialogTrigger asChild>
-            <Button className="bg-blue-600 hover:bg-blue-700">
+            <Button className="bg-emerald-600 hover:bg-emerald-700">
               <Plus className="w-4 h-4 mr-2" /> Novo Lançamento
             </Button>
           </DialogTrigger>
@@ -137,8 +189,8 @@ export default function Lancamentos() {
                 <label className="text-sm font-medium">Descrição</label>
                 <Input
                   required
-                  value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  value={form.description}
+                  onChange={(e) => setForm({ ...form, description: e.target.value })}
                 />
               </div>
               <div className="grid grid-cols-2 gap-4">
@@ -148,8 +200,8 @@ export default function Lancamentos() {
                     type="number"
                     step="0.01"
                     required
-                    value={formData.amount}
-                    onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
+                    value={form.amount}
+                    onChange={(e) => setForm({ ...form, amount: e.target.value })}
                   />
                 </div>
                 <div className="space-y-2">
@@ -157,18 +209,15 @@ export default function Lancamentos() {
                   <Input
                     type="date"
                     required
-                    value={formData.date}
-                    onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+                    value={form.date}
+                    onChange={(e) => setForm({ ...form, date: e.target.value })}
                   />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Tipo</label>
-                  <Select
-                    value={formData.type}
-                    onValueChange={(v) => setFormData({ ...formData, type: v })}
-                  >
+                  <Select value={form.type} onValueChange={(v) => setForm({ ...form, type: v })}>
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
@@ -181,29 +230,56 @@ export default function Lancamentos() {
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Status</label>
                   <Select
-                    value={formData.status}
-                    onValueChange={(v) => setFormData({ ...formData, status: v })}
+                    value={form.status}
+                    onValueChange={(v) => setForm({ ...form, status: v })}
                   >
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="paid">Pago/Recebido</SelectItem>
+                      <SelectItem value="paid">Pago</SelectItem>
                       <SelectItem value="pending">Pendente</SelectItem>
                       <SelectItem value="overdue">Atrasado</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
               </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Categoria</label>
-                <Input
-                  required
-                  value={formData.category}
-                  onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                />
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Categoria</label>
+                  <Input
+                    required
+                    value={form.category}
+                    onChange={(e) => setForm({ ...form, category: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Grupo</label>
+                  <Input
+                    value={form.group}
+                    onChange={(e) => setForm({ ...form, group: e.target.value })}
+                  />
+                </div>
               </div>
-              <Button type="submit" className="w-full bg-blue-600">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Conta</label>
+                <Select
+                  value={form.account_id}
+                  onValueChange={(v) => setForm({ ...form, account_id: v })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {accounts.map((a) => (
+                      <SelectItem key={a.id} value={a.id}>
+                        {a.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <Button type="submit" className="w-full bg-emerald-600 hover:bg-emerald-700">
                 Salvar Lançamento
               </Button>
             </form>
@@ -211,17 +287,77 @@ export default function Lancamentos() {
         </Dialog>
       </div>
 
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {[
+          { label: 'Saldo do Mês', value: balances.month, color: 'text-slate-900' },
+          {
+            label: 'Saldo Consolidado',
+            value: balances.consolidated,
+            color: balances.consolidated >= 0 ? 'text-emerald-600' : 'text-red-600',
+          },
+          {
+            label: 'Dinheiro Disponível',
+            value: balances.available,
+            color: balances.available >= 0 ? 'text-emerald-600' : 'text-red-600',
+          },
+        ].map((b) => (
+          <Card key={b.label} className="border-slate-200">
+            <CardContent className="pt-6">
+              <p className="text-sm text-slate-500">{b.label}</p>
+              <p className={`text-2xl font-bold ${b.color}`}>{formatCurrency(b.value)}</p>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
       <Card className="border-slate-200">
-        <div className="p-4 border-b border-slate-100 flex gap-4">
-          <div className="relative w-full max-w-sm">
+        <div className="p-4 border-b border-slate-100 flex flex-wrap gap-3">
+          <div className="relative w-full max-w-xs">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
             <Input
-              placeholder="Buscar lançamentos..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-9 bg-slate-50 border-slate-200"
+              placeholder="Buscar..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-9 bg-slate-50"
             />
           </div>
+          <Select value={filterGroup} onValueChange={setFilterGroup}>
+            <SelectTrigger className="w-40">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos os grupos</SelectItem>
+              {groups.map((g) => (
+                <SelectItem key={g} value={g}>
+                  {g}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={filterAccount} onValueChange={setFilterAccount}>
+            <SelectTrigger className="w-44">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todas as contas</SelectItem>
+              {accounts.map((a) => (
+                <SelectItem key={a.id} value={a.id}>
+                  {a.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={filterStatus} onValueChange={setFilterStatus}>
+            <SelectTrigger className="w-36">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos status</SelectItem>
+              <SelectItem value="paid">Pago</SelectItem>
+              <SelectItem value="pending">Pendente</SelectItem>
+              <SelectItem value="overdue">Atrasado</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
         <CardContent className="p-0">
           <Table>
@@ -229,30 +365,37 @@ export default function Lancamentos() {
               <TableRow>
                 <TableHead>Data</TableHead>
                 <TableHead>Descrição</TableHead>
-                <TableHead>Categoria</TableHead>
+                <TableHead>Grupo</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="text-right">Valor</TableHead>
                 <TableHead className="w-[50px]"></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filtered.length === 0 ? (
+              {paginated.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={6} className="text-center py-8 text-slate-500">
                     Nenhum lançamento encontrado.
                   </TableCell>
                 </TableRow>
               ) : (
-                filtered.map((t) => (
+                paginated.map((t) => (
                   <TableRow key={t.id} className="hover:bg-slate-50">
                     <TableCell className="text-slate-600">
                       {new Date(t.date).toLocaleDateString('pt-BR')}
                     </TableCell>
-                    <TableCell className="font-medium text-slate-900">{t.description}</TableCell>
-                    <TableCell className="text-slate-600">{t.category}</TableCell>
+                    <TableCell className="font-medium text-slate-900">
+                      {t.description}
+                      {transferIds.has(t.id) && (
+                        <Badge variant="outline" className="ml-2 bg-blue-50 text-blue-700">
+                          Transferência
+                        </Badge>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-slate-600">{t.group || '-'}</TableCell>
                     <TableCell>
                       {t.status === 'paid' && (
-                        <Badge className="bg-green-100 text-green-800 hover:bg-green-100">
+                        <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100">
                           Pago
                         </Badge>
                       )}
@@ -274,7 +417,7 @@ export default function Lancamentos() {
                       )}
                     </TableCell>
                     <TableCell
-                      className={`text-right font-semibold ${t.type === 'income' ? 'text-green-600' : 'text-red-600'}`}
+                      className={`text-right font-semibold ${t.type === 'income' ? 'text-emerald-600' : 'text-red-600'}`}
                     >
                       {t.type === 'income' ? '+' : '-'}
                       {formatCurrency(t.amount)}
@@ -294,6 +437,31 @@ export default function Lancamentos() {
               )}
             </TableBody>
           </Table>
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between p-4 border-t border-slate-100">
+              <span className="text-sm text-slate-500">
+                Página {page + 1} de {totalPages}
+              </span>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="icon"
+                  disabled={page === 0}
+                  onClick={() => setPage(page - 1)}
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  disabled={page >= totalPages - 1}
+                  onClick={() => setPage(page + 1)}
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </Button>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>
