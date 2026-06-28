@@ -7,7 +7,7 @@ routerAdd(
       if (!userId) return e.unauthorizedError('auth required')
       var conversationId = e.request.pathValue('conversationId')
       if (!conversationId) return e.badRequestError('conversationId is required')
-      var result = $ai.agent('finance-advisor').listMessages({
+      var result = $ai.agent('ohana-advisor').listMessages({
         conversation_id: conversationId,
         user_id: userId,
       })

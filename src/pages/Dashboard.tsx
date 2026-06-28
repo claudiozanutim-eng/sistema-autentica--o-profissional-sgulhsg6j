@@ -26,24 +26,39 @@ import {
   ResponsiveContainer,
   Legend,
 } from 'recharts'
-import { ArrowDownRight, ArrowUpRight, DollarSign, Clock } from 'lucide-react'
+import {
+  ArrowDownRight,
+  ArrowUpRight,
+  DollarSign,
+  Clock,
+  AlertTriangle,
+  Lightbulb,
+  TrendingDown,
+} from 'lucide-react'
 import {
   formatCurrency,
   AVAILABLE_YEARS,
   MONTH_NAMES_PT,
   MONTH_LABELS_PT,
 } from '@/lib/finance-utils'
+import { getDashboardAlerts, type DashboardAlert } from '@/services/alerts'
 
 const PIE_COLORS = ['#1E3A5F', '#10B981', '#EF4444', '#F59E0B', '#8B5CF6', '#06B6D4', '#EC4899']
 
 export default function Dashboard() {
   const [transactions, setTransactions] = useState<Transaction[]>([])
+  const [alerts, setAlerts] = useState<DashboardAlert[]>([])
   const [loading, setLoading] = useState(true)
   const { selectedYear, setSelectedYear, selectedMonth, setSelectedMonth } = useAppStore()
 
   const loadData = async () => {
     try {
-      setTransactions(await getTransactions(selectedYear))
+      const [txns, alertData] = await Promise.all([
+        getTransactions(selectedYear),
+        getDashboardAlerts().catch(() => ({ alerts: [] })),
+      ])
+      setTransactions(txns)
+      setAlerts(alertData.alerts || [])
     } catch (e) {
       console.error(e)
     } finally {
@@ -149,6 +164,38 @@ export default function Dashboard() {
           </Select>
         </div>
       </div>
+
+      {alerts.length > 0 && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {alerts.map((alert, i) => {
+            const styles: Record<string, string> = {
+              red: 'border-red-300 bg-red-50 text-red-700',
+              orange: 'border-orange-300 bg-orange-50 text-orange-700',
+              green: 'border-emerald-300 bg-emerald-50 text-emerald-700',
+            }
+            const icons: Record<string, typeof AlertTriangle> = {
+              red: AlertTriangle,
+              orange: TrendingDown,
+              green: Lightbulb,
+            }
+            const Icon = icons[alert.severity] || AlertTriangle
+            return (
+              <div
+                key={i}
+                className={`p-4 rounded-lg border ${styles[alert.severity] || styles.red}`}
+              >
+                <div className="flex items-start gap-2">
+                  <Icon className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-sm font-semibold">{alert.title}</p>
+                    <p className="text-xs opacity-80 mt-1">{alert.message}</p>
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {[

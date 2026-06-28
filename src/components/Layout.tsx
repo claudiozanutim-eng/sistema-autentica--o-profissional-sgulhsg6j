@@ -33,7 +33,7 @@ const navItems = [
   { name: 'Importar', path: '/importar', icon: Upload },
   { name: 'Relatórios', path: '/relatorios', icon: FileBarChart },
   { name: 'Análises', path: '/analises', icon: LineChart },
-  { name: 'Agente IA', path: '/agente-ia', icon: Bot },
+  { name: 'Agente IA', path: '/agente', icon: Bot },
   { name: 'Configurações', path: '/config', icon: Settings },
 ]
 

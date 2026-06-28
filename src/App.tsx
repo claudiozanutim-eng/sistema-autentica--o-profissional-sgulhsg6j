@@ -15,6 +15,7 @@ import Lancamentos from '@/pages/Lancamentos'
 import Importar from '@/pages/Importar'
 import Analises from '@/pages/Analises'
 import Config from '@/pages/Config'
+import Agente from '@/pages/Agente'
 import NotFound from '@/pages/NotFound'
 
 const App = () => (
@@ -34,6 +35,7 @@ const App = () => (
                 <Route path="/lancamentos" element={<Lancamentos />} />
                 <Route path="/importar" element={<Importar />} />
                 <Route path="/analises" element={<Analises />} />
+                <Route path="/agente" element={<Agente />} />
                 <Route path="/config" element={<Config />} />
               </Route>
             </Route>
