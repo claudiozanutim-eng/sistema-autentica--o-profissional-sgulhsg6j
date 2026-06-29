@@ -18,3 +18,9 @@ export const updateAccount = (id: string, data: Partial<Account>) =>
   pb.collection<Account>('accounts').update(id, data)
 
 export const deleteAccount = (id: string) => pb.collection<Account>('accounts').delete(id)
+
+export const countLinkedTransactions = (accountId: string) =>
+  pb
+    .collection('transactions')
+    .getList(1, 1, { filter: `account_id = "${accountId}"` })
+    .then((r) => r.totalItems)

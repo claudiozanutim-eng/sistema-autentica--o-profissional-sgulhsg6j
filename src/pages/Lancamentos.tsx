@@ -134,7 +134,7 @@ export default function Lancamentos() {
             type: form.type as any,
             status: form.status as any,
             user_id: user.id,
-            account_id: form.account_id || accounts[0]?.id || '',
+            account_id: form.account_id || accounts.find((a) => a.active)?.id || '',
           },
           user.id,
           'manual',
@@ -271,11 +271,13 @@ export default function Lancamentos() {
                     <SelectValue placeholder="Selecione" />
                   </SelectTrigger>
                   <SelectContent>
-                    {accounts.map((a) => (
-                      <SelectItem key={a.id} value={a.id}>
-                        {a.name}
-                      </SelectItem>
-                    ))}
+                    {accounts
+                      .filter((a) => a.active)
+                      .map((a) => (
+                        <SelectItem key={a.id} value={a.id}>
+                          {a.name}
+                        </SelectItem>
+                      ))}
                   </SelectContent>
                 </Select>
               </div>

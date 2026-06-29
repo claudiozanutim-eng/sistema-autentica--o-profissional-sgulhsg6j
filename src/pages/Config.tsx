@@ -6,7 +6,8 @@ import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Switch } from '@/components/ui/switch'
 import { useToast } from '@/hooks/use-toast'
-import { User, Lock, Settings } from 'lucide-react'
+import { User, Lock, Settings, Wallet } from 'lucide-react'
+import { AccountsManager } from '@/components/accounts-manager'
 
 export default function Config() {
   const { user } = useAuth()
@@ -23,7 +24,6 @@ export default function Config() {
         <h1 className="text-2xl font-bold text-slate-900">Configurações do Sistema</h1>
         <p className="text-slate-500 text-sm">Gerencie seu perfil e preferências de sistema.</p>
       </div>
-
       <Tabs defaultValue="profile" className="space-y-6">
         <TabsList className="bg-slate-100 border border-slate-200">
           <TabsTrigger value="profile" className="data-[state=active]:bg-white">
@@ -34,6 +34,9 @@ export default function Config() {
           </TabsTrigger>
           <TabsTrigger value="preferences" className="data-[state=active]:bg-white">
             <Settings className="w-4 h-4 mr-2" /> Preferências
+          </TabsTrigger>
+          <TabsTrigger value="contas" className="data-[state=active]:bg-white">
+            <Wallet className="w-4 h-4 mr-2" /> Contas
           </TabsTrigger>
         </TabsList>
 
@@ -119,7 +122,21 @@ export default function Config() {
             </CardContent>
           </Card>
         </TabsContent>
-      </Tabs>
+
+        <TabsContent value="contas">
+          <Card className="border-slate-200">
+            <CardHeader>
+              <CardTitle>Gestão de Contas</CardTitle>
+              <CardDescription>
+                Cadastre e gerencie suas contas bancárias e formas de pagamento.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <AccountsManager />
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>{' '}
     </div>
   )
 }
