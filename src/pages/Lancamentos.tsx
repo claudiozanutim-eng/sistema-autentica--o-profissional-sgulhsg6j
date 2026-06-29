@@ -6,6 +6,7 @@ import {
   type Transaction,
 } from '@/services/transactions'
 import { getAccounts, type Account } from '@/services/accounts'
+import { getChartOfAccounts, type ChartOfAccount } from '@/services/chart-of-accounts'
 import { useRealtime } from '@/hooks/use-realtime'
 import { useAuth } from '@/hooks/use-auth'
 import { useAppStore } from '@/stores/main'
@@ -56,6 +57,7 @@ export default function Lancamentos() {
   const [filterAccount, setFilterAccount] = useState('all')
   const [filterStatus, setFilterStatus] = useState('all')
   const [isOpen, setIsOpen] = useState(false)
+  const [chartOfAccounts, setChartOfAccounts] = useState<ChartOfAccount[]>([])
   const { user } = useAuth()
   const { toast } = useToast()
   const { selectedYear } = useAppStore()
@@ -73,9 +75,14 @@ export default function Lancamentos() {
 
   const loadData = async () => {
     try {
-      const [tx, acc] = await Promise.all([getTransactions(selectedYear), getAccounts()])
+      const [tx, acc, coa] = await Promise.all([
+        getTransactions(selectedYear),
+        getAccounts(),
+        getChartOfAccounts(),
+      ])
       setTransactions(tx)
       setAccounts(acc)
+      setChartOfAccounts(coa.filter((c) => c.active))
     } catch (e) {
       console.error(e)
     }
@@ -86,6 +93,16 @@ export default function Lancamentos() {
   useRealtime('transactions', () => loadData())
 
   const transferIds = useMemo(() => detectTransfers(transactions), [transactions])
+
+  const groupOptions = useMemo(
+    () => [...new Set(chartOfAccounts.map((c) => c.group))],
+    [chartOfAccounts],
+  )
+
+  const categoryOptions = useMemo(
+    () => chartOfAccounts.filter((c) => c.group === form.group),
+    [chartOfAccounts, form.group],
+  )
 
   const filtered = useMemo(
     () =>
@@ -120,18 +137,36 @@ export default function Lancamentos() {
     return { month: income - expense, consolidated, available: consolidated - pending }
   }, [transactions])
 
-  const groups = [...new Set(transactions.map((t) => t.group).filter(Boolean))]
+  const groups =
+    groupOptions.length > 0
+      ? groupOptions
+      : [...new Set(transactions.map((t) => t.group).filter(Boolean))]
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!user) return
+    if (!form.group) {
+      toast({ title: 'Selecione um grupo.', variant: 'destructive' })
+      return
+    }
+    if (!form.category) {
+      toast({ title: 'Selecione uma categoria.', variant: 'destructive' })
+      return
+    }
+    const matchingCoa = chartOfAccounts.find(
+      (c) => c.group === form.group && c.category === form.category,
+    )
+    if (!matchingCoa) {
+      toast({ title: 'Categoria não pertence ao grupo selecionado.', variant: 'destructive' })
+      return
+    }
     try {
       await createTransaction(
         prepareTransactionData(
           {
             ...form,
             amount: Number(form.amount),
-            type: form.type as any,
+            type: matchingCoa.type as any,
             status: form.status as any,
             user_id: user.id,
             account_id: form.account_id || accounts.find((a) => a.active)?.id || '',
@@ -193,40 +228,88 @@ export default function Lancamentos() {
                   onChange={(e) => setForm({ ...form, description: e.target.value })}
                 />
               </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Grupo</label>
+                <Select
+                  value={form.group}
+                  onValueChange={(v) => setForm({ ...form, group: v, category: '' })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione um grupo" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {groupOptions.map((g) => (
+                      <SelectItem key={g} value={g}>
+                        {g}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <label className={`text-sm font-medium ${!form.group ? 'text-slate-300' : ''}`}>
+                  Categoria
+                </label>
+                <Select
+                  value={form.category}
+                  onValueChange={(v) => {
+                    const coa = chartOfAccounts.find(
+                      (c) => c.category === v && c.group === form.group,
+                    )
+                    setForm({ ...form, category: v, type: coa?.type || form.type })
+                  }}
+                  disabled={!form.group}
+                >
+                  <SelectTrigger>
+                    <SelectValue
+                      placeholder={
+                        form.group ? 'Selecione uma categoria' : 'Selecione um grupo primeiro'
+                      }
+                    />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {categoryOptions.map((c) => (
+                      <SelectItem key={c.id} value={c.category}>
+                        {c.category}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">Valor (R$)</label>
+                  <label
+                    className={`text-sm font-medium ${!form.category ? 'text-slate-300' : ''}`}
+                  >
+                    Valor (R$)
+                  </label>
                   <Input
                     type="number"
                     step="0.01"
                     required
+                    disabled={!form.category}
                     value={form.amount}
                     onChange={(e) => setForm({ ...form, amount: e.target.value })}
+                    className={!form.category ? 'bg-slate-50' : ''}
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">Data</label>
+                  <label
+                    className={`text-sm font-medium ${!form.category ? 'text-slate-300' : ''}`}
+                  >
+                    Data
+                  </label>
                   <Input
                     type="date"
                     required
+                    disabled={!form.category}
                     value={form.date}
                     onChange={(e) => setForm({ ...form, date: e.target.value })}
+                    className={!form.category ? 'bg-slate-50' : ''}
                   />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Tipo</label>
-                  <Select value={form.type} onValueChange={(v) => setForm({ ...form, type: v })}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="income">Receita</SelectItem>
-                      <SelectItem value="expense">Despesa</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Status</label>
                   <Select
@@ -243,22 +326,17 @@ export default function Lancamentos() {
                     </SelectContent>
                   </Select>
                 </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">Categoria</label>
-                  <Input
-                    required
-                    value={form.category}
-                    onChange={(e) => setForm({ ...form, category: e.target.value })}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Grupo</label>
-                  <Input
-                    value={form.group}
-                    onChange={(e) => setForm({ ...form, group: e.target.value })}
-                  />
+                  <label className="text-sm font-medium text-slate-400">Tipo (auto)</label>
+                  <Select value={form.type} disabled>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="income">Receita</SelectItem>
+                      <SelectItem value="expense">Despesa</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
               <div className="space-y-2">
