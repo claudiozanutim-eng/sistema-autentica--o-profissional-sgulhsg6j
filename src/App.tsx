@@ -14,6 +14,7 @@ import Dashboard from '@/pages/Dashboard'
 import Lancamentos from '@/pages/Lancamentos'
 import Importar from '@/pages/Importar'
 import Analises from '@/pages/Analises'
+import Relatorios from '@/pages/Relatorios'
 import Config from '@/pages/Config'
 import Agente from '@/pages/Agente'
 import NotFound from '@/pages/NotFound'
@@ -35,6 +36,7 @@ const App = () => (
                 <Route path="/lancamentos" element={<Lancamentos />} />
                 <Route path="/importar" element={<Importar />} />
                 <Route path="/analises" element={<Analises />} />
+                <Route path="/relatorios" element={<Relatorios />} />
                 <Route path="/agente" element={<Agente />} />
                 <Route path="/config" element={<Config />} />
               </Route>
