@@ -16,6 +16,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { Progress } from '@/components/ui/progress'
 import {
   UploadCloud,
   CheckCircle2,
@@ -23,11 +24,17 @@ import {
   AlertCircle,
   Landmark,
   CreditCard as CreditCardIcon,
+  Zap,
+  Loader2,
 } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
 import { useAuth } from '@/hooks/use-auth'
-import { categorizeTransactions, processPdf, type CategorizeResult } from '@/services/imports'
-import { createTransaction } from '@/services/transactions'
+import {
+  categorizeTransactions,
+  processPdf,
+  batchCreateTransactions,
+  type CategorizeResult,
+} from '@/services/imports'
 import { getAccounts } from '@/services/accounts'
 import { getCreditCards } from '@/services/credit-cards'
 import { prepareTransactionData, formatCurrency } from '@/lib/finance-utils'
@@ -46,6 +53,11 @@ export default function Importar() {
   const [isDragging, setIsDragging] = useState(false)
   const [results, setResults] = useState<CategorizeResult[]>([])
   const [isProcessing, setIsProcessing] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
+  const [progress, setProgress] = useState(0)
+  const [progressLabel, setProgressLabel] = useState('')
+  const [matchedCount, setMatchedCount] = useState(0)
+  const [unmatchedCount, setUnmatchedCount] = useState(0)
   const [destinations, setDestinations] = useState<DestinationItem[]>([])
   const [selectedDestinationId, setSelectedDestinationId] = useState<string>('')
   const fileRef = useRef<HTMLInputElement>(null)
@@ -57,11 +69,16 @@ export default function Importar() {
       try {
         const [accounts, cards] = await Promise.all([getAccounts(), getCreditCards()])
         const accountItems: DestinationItem[] = accounts
-          .filter((a) => a.active)
-          .map((a) => ({ id: a.id, name: a.name, bank: a.bank || '', type: 'account' as const }))
+          .filter((a: Account) => a.active)
+          .map((a: Account) => ({
+            id: a.id,
+            name: a.name,
+            bank: a.bank || '',
+            type: 'account' as const,
+          }))
         const cardItems: DestinationItem[] = cards
-          .filter((c) => c.active)
-          .map((c) => ({
+          .filter((c: CreditCard) => c.active)
+          .map((c: CreditCard) => ({
             id: c.id,
             name: c.name,
             bank: c.bank || '',
@@ -110,28 +127,49 @@ export default function Importar() {
       return
     }
     setIsProcessing(true)
+    setStep(2)
+    setProgress(15)
+    setProgressLabel('Analisando arquivo...')
+
     try {
       if (file.name.toLowerCase().endsWith('.pdf')) {
-        const { transactions: categorized } = await processPdf(file, selectedDestination.bank)
-        setResults(categorized)
+        setProgress(30)
+        setProgressLabel('Extraindo texto do PDF...')
+        const response = await processPdf(file, selectedDestination.bank)
+        setProgress(75)
+        setProgressLabel('Categorização local concluída!')
+        setResults(response.transactions)
+        setMatchedCount(response.matched_count || 0)
+        setUnmatchedCount(response.unmatched_count || 0)
       } else {
+        setProgress(25)
+        setProgressLabel('Lendo arquivo CSV...')
         const text = await file.text()
         const rows = parseCSV(text)
         if (rows.length === 0) {
           toast({ title: 'Nenhuma linha válida encontrada', variant: 'destructive' })
           setIsProcessing(false)
+          setStep(1)
           return
         }
-        const { transactions: categorized } = await categorizeTransactions(rows)
-        setResults(categorized)
+        setProgress(40)
+        setProgressLabel('Categorizando com OCR local + IA...')
+        const response = await categorizeTransactions(rows)
+        setProgress(85)
+        setProgressLabel('Categorização concluída!')
+        setResults(response.transactions)
+        setMatchedCount(response.matched_count || 0)
+        setUnmatchedCount(response.unmatched_count || 0)
       }
-      setStep(3)
+      setProgress(100)
+      setTimeout(() => setStep(3), 300)
     } catch (e: any) {
       toast({
         title: 'Erro ao processar arquivo',
         description: e?.response?.error || e?.message || undefined,
         variant: 'destructive',
       })
+      setStep(1)
     }
     setIsProcessing(false)
   }
@@ -145,15 +183,16 @@ export default function Importar() {
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files?.[0]) {
-      setStep(2)
       processFile(e.target.files[0])
     }
   }
 
   const finalize = async () => {
     if (!user || !selectedDestination) return
+    setIsSaving(true)
+
     try {
-      for (const r of results) {
+      const txBatch = results.map((r) => {
         const baseData: Record<string, any> = {
           description: r.description,
           amount: r.amount,
@@ -169,14 +208,44 @@ export default function Importar() {
         } else {
           baseData.account_id = selectedDestination.id
         }
-        await createTransaction(prepareTransactionData(baseData, user.id, 'import'))
+        return prepareTransactionData(baseData, user.id, 'import')
+      })
+
+      const BATCH_SIZE = 50
+      let totalCreated = 0
+      const allErrors: Array<{ index: number; error: string }> = []
+
+      for (let i = 0; i < txBatch.length; i += BATCH_SIZE) {
+        const chunk = txBatch.slice(i, i + BATCH_SIZE)
+        const result = await batchCreateTransactions(chunk)
+        totalCreated += result.created
+        if (result.errors.length > 0) {
+          allErrors.push(...result.errors)
+        }
       }
-      toast({ title: `${results.length} transações importadas!` })
+
+      if (allErrors.length > 0 && totalCreated === 0) {
+        throw new Error(allErrors[0]?.error || 'Falha ao criar transações')
+      }
+
+      toast({
+        title: `${totalCreated} transações importadas!`,
+        description:
+          matchedCount > 0 ? `${matchedCount} por OCR local, ${unmatchedCount} por IA` : undefined,
+      })
       setResults([])
       setStep(1)
-    } catch {
-      toast({ title: 'Erro ao salvar', variant: 'destructive' })
+      setProgress(0)
+      setMatchedCount(0)
+      setUnmatchedCount(0)
+    } catch (e: any) {
+      toast({
+        title: 'Erro ao salvar',
+        description: e?.message || undefined,
+        variant: 'destructive',
+      })
     }
+    setIsSaving(false)
   }
 
   return (
@@ -184,7 +253,7 @@ export default function Importar() {
       <div>
         <h1 className="text-2xl font-bold text-slate-900">Importação Inteligente</h1>
         <p className="text-slate-500 text-sm">
-          Extração automática com IA e categorização por OCR.
+          Extração automática com IA e categorização por OCR local de alta velocidade.
         </p>
       </div>
 
@@ -247,7 +316,8 @@ export default function Importar() {
                 Arraste e solte o arquivo CSV ou PDF aqui
               </h3>
               <p className="text-slate-500 text-sm mb-6 max-w-sm">
-                Suporte para arquivos .csv e .pdf. A IA extrairá e categorizará automaticamente.
+                Suporte para arquivos .csv e .pdf. OCR local categoriza instantaneamente, IA apenas
+                para casos incertos.
               </p>
               <input
                 ref={fileRef}
@@ -264,15 +334,33 @@ export default function Importar() {
               >
                 Selecionar Arquivo
               </Button>
+              {selectedDestination && (
+                <div className="mt-4 flex items-center gap-1.5 text-xs text-emerald-600">
+                  <Zap className="w-3.5 h-3.5" />
+                  <span>Destino: {selectedDestination.name} — processamento otimizado ativo</span>
+                </div>
+              )}
             </div>
           </CardContent>
         )}
 
         {(step === 2 || isProcessing) && (
           <CardContent className="p-12 text-center">
-            <div className="animate-spin w-12 h-12 border-4 border-emerald-600 border-t-transparent rounded-full mx-auto mb-4" />
-            <h3 className="text-lg font-semibold text-slate-900">Processando com IA...</h3>
-            <p className="text-slate-500 text-sm">Extraindo e categorizando transações com IA.</p>
+            <div className="flex flex-col items-center gap-4">
+              <div className="relative">
+                <Loader2 className="w-12 h-12 text-emerald-600 animate-spin" />
+              </div>
+              <h3 className="text-lg font-semibold text-slate-900">
+                {progressLabel || 'Processando...'}
+              </h3>
+              <p className="text-slate-500 text-sm">
+                OCR local primeiro, IA apenas quando necessário. Muito mais rápido.
+              </p>
+              <div className="w-full max-w-md">
+                <Progress value={progress} className="h-2" />
+                <p className="text-xs text-slate-400 mt-1.5">{progress}% concluído</p>
+              </div>
+            </div>
           </CardContent>
         )}
 
@@ -283,8 +371,16 @@ export default function Importar() {
                 <FileSpreadsheet className="w-5 h-5 text-emerald-600" />
                 Pré-visualização ({results.length} transações)
               </CardTitle>
-              <CardDescription>
-                Verifique os dados antes de confirmar. Verde = alta confiança, Amarelo = incerto.
+              <CardDescription className="flex items-center gap-3 flex-wrap">
+                <span>
+                  Verifique os dados antes de confirmar. Verde = alta confiança, Amarelo = incerto.
+                </span>
+                {matchedCount > 0 && (
+                  <span className="inline-flex items-center gap-1 text-emerald-600 font-medium">
+                    <Zap className="w-3.5 h-3.5" />
+                    {matchedCount} por OCR local · {unmatchedCount} por IA
+                  </span>
+                )}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -337,8 +433,12 @@ export default function Importar() {
               </div>
               <div className="flex items-center gap-2 mt-4 text-sm text-slate-500">
                 <AlertCircle className="w-4 h-4" />
-                <span className="bg-emerald-50 px-2 py-0.5 rounded">Verde: auto-categorizado</span>
-                <span className="bg-amber-50 px-2 py-0.5 rounded">Amarelo: incerto</span>
+                <span className="bg-emerald-50 px-2 py-0.5 rounded">
+                  Verde: OCR local (instantâneo)
+                </span>
+                <span className="bg-amber-50 px-2 py-0.5 rounded">
+                  Amarelo: categorizado por IA
+                </span>
               </div>
               <div className="flex justify-end gap-3 mt-6">
                 <Button
@@ -346,12 +446,26 @@ export default function Importar() {
                   onClick={() => {
                     setStep(1)
                     setResults([])
+                    setProgress(0)
+                    setMatchedCount(0)
+                    setUnmatchedCount(0)
                   }}
                 >
                   Cancelar
                 </Button>
-                <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={finalize}>
-                  Confirmar Importação
+                <Button
+                  className="bg-emerald-600 hover:bg-emerald-700"
+                  onClick={finalize}
+                  disabled={isSaving}
+                >
+                  {isSaving ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Salvando em lote...
+                    </>
+                  ) : (
+                    `Confirmar Importação (${results.length})`
+                  )}
                 </Button>
               </div>
             </CardContent>

@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-06-29T23:53:02.439Z",
+  "generatedAt": "2026-06-29T23:56:42.813Z",
   "collections": [
     {
       "name": "users",
@@ -29,19 +29,14 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate"
-          ]
+          "autodateTriggers": ["onCreate"]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate",
-            "onUpdate"
-          ]
+          "autodateTriggers": ["onCreate", "onUpdate"]
         }
       ],
       "indexes": [
@@ -77,10 +72,7 @@
           "type": "select",
           "required": true,
           "system": false,
-          "selectValues": [
-            "income",
-            "expense"
-          ]
+          "selectValues": ["income", "expense"]
         },
         {
           "name": "date",
@@ -99,11 +91,7 @@
           "type": "select",
           "required": true,
           "system": false,
-          "selectValues": [
-            "paid",
-            "pending",
-            "overdue"
-          ]
+          "selectValues": ["paid", "pending", "overdue"]
         },
         {
           "name": "user_id",
@@ -117,19 +105,14 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate"
-          ]
+          "autodateTriggers": ["onCreate"]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate",
-            "onUpdate"
-          ]
+          "autodateTriggers": ["onCreate", "onUpdate"]
         },
         {
           "name": "account_id",
@@ -174,10 +157,7 @@
           "type": "select",
           "required": false,
           "system": false,
-          "selectValues": [
-            "manual",
-            "import"
-          ]
+          "selectValues": ["manual", "import"]
         },
         {
           "name": "credit_card_id",
@@ -189,7 +169,12 @@
       ],
       "indexes": [
         "CREATE INDEX idx_transactions_date ON transactions (date DESC)",
-        "CREATE INDEX idx_transactions_user ON transactions (user_id)"
+        "CREATE INDEX idx_transactions_user ON transactions (user_id)",
+        "CREATE INDEX `idx_transactions_group` ON `transactions` (group)",
+        "CREATE INDEX `idx_transactions_category` ON `transactions` (category)",
+        "CREATE INDEX `idx_transactions_group_category` ON `transactions` (group,category)",
+        "CREATE INDEX `idx_transactions_type_date` ON `transactions` (type,date)",
+        "CREATE INDEX `idx_transactions_year_month` ON `transactions` (year,month_year)"
       ]
     },
     {
@@ -220,10 +205,7 @@
           "type": "select",
           "required": true,
           "system": false,
-          "selectValues": [
-            "income",
-            "expense"
-          ]
+          "selectValues": ["income", "expense"]
         },
         {
           "name": "ocr_terms",
@@ -248,22 +230,22 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate"
-          ]
+          "autodateTriggers": ["onCreate"]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate",
-            "onUpdate"
-          ]
+          "autodateTriggers": ["onCreate", "onUpdate"]
         }
       ],
-      "indexes": []
+      "indexes": [
+        "CREATE INDEX `idx_coa_ocr_terms` ON `chart_of_accounts` (ocr_terms)",
+        "CREATE INDEX `idx_coa_group` ON `chart_of_accounts` (group)",
+        "CREATE INDEX `idx_coa_category` ON `chart_of_accounts` (category)",
+        "CREATE INDEX `idx_coa_group_category` ON `chart_of_accounts` (group,category)"
+      ]
     },
     {
       "name": "accounts",
@@ -311,19 +293,14 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate"
-          ]
+          "autodateTriggers": ["onCreate"]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate",
-            "onUpdate"
-          ]
+          "autodateTriggers": ["onCreate", "onUpdate"]
         }
       ],
       "indexes": []
@@ -362,11 +339,7 @@
           "type": "select",
           "required": true,
           "system": false,
-          "selectValues": [
-            "processing",
-            "completed",
-            "error"
-          ]
+          "selectValues": ["processing", "completed", "error"]
         },
         {
           "name": "transactions_json",
@@ -385,24 +358,17 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate"
-          ]
+          "autodateTriggers": ["onCreate"]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate",
-            "onUpdate"
-          ]
+          "autodateTriggers": ["onCreate", "onUpdate"]
         }
       ],
-      "indexes": [
-        "CREATE INDEX `idx_imports_status` ON `imports` (status)"
-      ]
+      "indexes": ["CREATE INDEX `idx_imports_status` ON `imports` (status)"]
     },
     {
       "name": "agente_conversas",
@@ -445,24 +411,17 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate"
-          ]
+          "autodateTriggers": ["onCreate"]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate",
-            "onUpdate"
-          ]
+          "autodateTriggers": ["onCreate", "onUpdate"]
         }
       ],
-      "indexes": [
-        "CREATE INDEX idx_agente_conversas_user ON agente_conversas (user_id)"
-      ]
+      "indexes": ["CREATE INDEX idx_agente_conversas_user ON agente_conversas (user_id)"]
     },
     {
       "name": "credit_cards",
@@ -517,24 +476,17 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate"
-          ]
+          "autodateTriggers": ["onCreate"]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate",
-            "onUpdate"
-          ]
+          "autodateTriggers": ["onCreate", "onUpdate"]
         }
       ],
-      "indexes": [
-        "CREATE INDEX idx_credit_cards_user ON credit_cards (user_id)"
-      ]
+      "indexes": ["CREATE INDEX idx_credit_cards_user ON credit_cards (user_id)"]
     }
   ]
 }

@@ -84,13 +84,30 @@ routerAdd(
         200,
         0,
       )
-      var coaLines = []
+
+      var termMap = {}
+      var coaList = []
       coaRecords.forEach(function (r) {
-        coaLines.push(
-          r.getString('group') + ' > ' + r.getString('category') + ' (' + r.getString('type') + ')',
-        )
+        var terms = (r.getString('ocr_terms') || '')
+          .toLowerCase()
+          .split(',')
+          .map(function (t) {
+            return t.trim()
+          })
+          .filter(Boolean)
+        var entry = {
+          group: r.getString('group'),
+          category: r.getString('category'),
+          type: r.getString('type'),
+        }
+        coaList.push(entry)
+        terms.forEach(function (term) {
+          termMap[term] = entry
+        })
       })
-      var coaText = coaLines.join('\n')
+      var termKeys = Object.keys(termMap).sort(function (a, b) {
+        return b.length - a.length
+      })
 
       var bankHints = {
         itau: 'Itaú statements: dates may be DD/MM, credits marked C, debits D.',
@@ -104,16 +121,12 @@ routerAdd(
           {
             role: 'system',
             content:
-              'You are a financial PDF parser for Brazilian bank statements. Extract ALL transactions. Return ONLY a JSON array. Each element: {"date":"YYYY-MM-DD","description":"","amount":0.00,"type":"income|expense","group":"","category":""}. Credits=income, Debits=expense. Amount always positive. If year missing use 2025. Categorize using the chart of accounts. ' +
+              'You are a financial PDF parser for Brazilian bank statements. Extract ALL transactions. Return ONLY a JSON array. Each element: {"date":"YYYY-MM-DD","description":"","amount":0.00,"type":"income|expense","group":"","category":""}. Credits=income, Debits=expense. Amount always positive. If year missing use 2025. Do NOT categorize - leave group and category empty. ' +
               (bankHints[bankSource] || ''),
           },
           {
             role: 'user',
-            content:
-              'Chart of Accounts:\n' +
-              coaText +
-              '\n\nBank Statement Text:\n' +
-              pdfText.substring(0, 30000),
+            content: 'Bank Statement Text:\n' + pdfText.substring(0, 30000),
           },
         ],
       })
@@ -123,12 +136,94 @@ routerAdd(
       if (!jsonMatch) throw new Error('AI não retornou transações válidas')
       var transactions = JSON.parse(jsonMatch[0])
 
+      var matchedCount = 0
+      var unmatchedForAI = []
+
       transactions.forEach(function (t, i) {
         t.index = i
-        t.confidence = 'medium'
+        t.confidence = 'low'
         if (typeof t.amount === 'string') {
           t.amount = parseFloat(String(t.amount).replace(/[^\d.-]/g, '')) || 0
         }
+        t.group = ''
+        t.category = ''
+
+        var desc = (t.description || '').toLowerCase()
+        var found = null
+        for (var j = 0; j < termKeys.length; j++) {
+          var key = termKeys[j]
+          if (desc.indexOf(key) !== -1) {
+            found = termMap[key]
+            break
+          }
+        }
+        if (found) {
+          t.group = found.group
+          t.category = found.category
+          t.type = found.type
+          t.confidence = 'high'
+          matchedCount++
+        } else {
+          unmatchedForAI.push({ ref: t, description: t.description, amount: t.amount })
+        }
+      })
+
+      if (unmatchedForAI.length > 0 && coaList.length > 0) {
+        var batchSize = 50
+        for (var bStart = 0; bStart < unmatchedForAI.length; bStart += batchSize) {
+          var batch = unmatchedForAI.slice(bStart, bStart + batchSize)
+          var coaText = coaList
+            .map(function (c) {
+              return c.group + ' > ' + c.category + ' (' + c.type + ')'
+            })
+            .join('\n')
+          var txText = batch
+            .map(function (u, i) {
+              return bStart + i + 1 + '. ' + u.description + ' | ' + u.amount
+            })
+            .join('\n')
+          try {
+            var aiReply = $ai.chat({
+              model: 'fast',
+              messages: [
+                {
+                  role: 'system',
+                  content:
+                    'You are a financial categorization assistant. Given the chart of accounts and transactions, assign group, category, and type. Respond ONLY with a JSON array. Each element: {"index": N (1-based within this batch), "group": "", "category": "", "type": "income|expense"}.',
+                },
+                {
+                  role: 'user',
+                  content: 'Chart of Accounts:\n' + coaText + '\n\nTransactions:\n' + txText,
+                },
+              ],
+            })
+            var aiContent = aiReply.choices[0].message.content
+            var aiJsonMatch = aiContent.match(/\[[\s\S]*\]/)
+            if (aiJsonMatch) {
+              var aiResults = JSON.parse(aiJsonMatch[0])
+              aiResults.forEach(function (r) {
+                var idx = (typeof r.index === 'number' ? r.index : parseInt(r.index, 10)) - 1
+                if (batch[idx]) {
+                  batch[idx].ref.group = r.group || 'Outros'
+                  batch[idx].ref.category = r.category || 'Não Classificado'
+                  batch[idx].ref.type = r.type || batch[idx].ref.type
+                  batch[idx].ref.confidence = 'medium'
+                }
+              })
+            }
+          } catch (err) {
+            $app
+              .logger()
+              .error(
+                'AI categorization failed for PDF batch starting at ' + bStart,
+                'error',
+                err.message || '',
+              )
+          }
+        }
+      }
+
+      transactions.forEach(function (t) {
         if (!t.group) t.group = 'Outros'
         if (!t.category) t.category = 'Não Classificado'
       })
@@ -137,7 +232,12 @@ routerAdd(
       importRecord.set('transactions_json', JSON.stringify(transactions))
       $app.save(importRecord)
 
-      return e.json(200, { transactions: transactions, import_id: importRecord.id })
+      return e.json(200, {
+        transactions: transactions,
+        import_id: importRecord.id,
+        matched_count: matchedCount,
+        unmatched_count: transactions.length - matchedCount,
+      })
     } catch (err) {
       importRecord.set('status', 'error')
       importRecord.set('error_message', err.message || 'Erro ao processar PDF')
