@@ -67,7 +67,7 @@ function SidebarContent() {
     <>
       <div className="h-16 flex items-center gap-2.5 px-6 bg-slate-950">
         <img
-          src="https://img.usecurling.com/i?q=ohana&color=white&shape=fill"
+          src="/visual-edits/editedimage-1782772347964-081baa22.png"
           alt="OHANA"
           className="h-8 w-auto object-contain flex-shrink-0"
         />
