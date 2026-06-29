@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-06-29T13:07:51.973Z",
+  "generatedAt": "2026-06-29T22:46:09.565Z",
   "collections": [
     {
       "name": "users",
@@ -158,6 +158,13 @@
           "required": false,
           "system": false,
           "selectValues": ["manual", "import"]
+        },
+        {
+          "name": "credit_card_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "credit_cards"
         }
       ],
       "indexes": [
@@ -405,6 +412,71 @@
         }
       ],
       "indexes": ["CREATE INDEX idx_agente_conversas_user ON agente_conversas (user_id)"]
+    },
+    {
+      "name": "credit_cards",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != '' && user_id = @request.auth.id",
+        "view": "@request.auth.id != '' && user_id = @request.auth.id",
+        "create": "@request.auth.id != '' && user_id = @request.auth.id",
+        "update": "@request.auth.id != '' && user_id = @request.auth.id",
+        "delete": "@request.auth.id != '' && user_id = @request.auth.id"
+      },
+      "fields": [
+        {
+          "name": "name",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "bank",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "limit",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "due_day",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "user_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "active",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": ["CREATE INDEX idx_credit_cards_user ON credit_cards (user_id)"]
     }
   ]
 }

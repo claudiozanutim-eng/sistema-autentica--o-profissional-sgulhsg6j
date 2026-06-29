@@ -6,8 +6,9 @@ import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Switch } from '@/components/ui/switch'
 import { useToast } from '@/hooks/use-toast'
-import { User, Lock, Settings, Wallet } from 'lucide-react'
+import { User, Lock, Settings, Wallet, CreditCard } from 'lucide-react'
 import { AccountsManager } from '@/components/accounts-manager'
+import { CreditCardsManager } from '@/components/credit-cards-manager'
 
 export default function Config() {
   const { user } = useAuth()
@@ -25,18 +26,36 @@ export default function Config() {
         <p className="text-slate-500 text-sm">Gerencie seu perfil e preferências de sistema.</p>
       </div>
       <Tabs defaultValue="profile" className="space-y-6">
-        <TabsList className="bg-slate-100 border border-slate-200">
-          <TabsTrigger value="profile" className="data-[state=active]:bg-white">
+        <TabsList className="bg-slate-100 border border-slate-200 flex-wrap h-auto">
+          <TabsTrigger
+            value="profile"
+            className="data-[state=active]:bg-white data-[state=active]:text-blue-600"
+          >
             <User className="w-4 h-4 mr-2" /> Meu Perfil
           </TabsTrigger>
-          <TabsTrigger value="security" className="data-[state=active]:bg-white">
+          <TabsTrigger
+            value="security"
+            className="data-[state=active]:bg-white data-[state=active]:text-blue-600"
+          >
             <Lock className="w-4 h-4 mr-2" /> Segurança
           </TabsTrigger>
-          <TabsTrigger value="preferences" className="data-[state=active]:bg-white">
+          <TabsTrigger
+            value="preferences"
+            className="data-[state=active]:bg-white data-[state=active]:text-blue-600"
+          >
             <Settings className="w-4 h-4 mr-2" /> Preferências
           </TabsTrigger>
-          <TabsTrigger value="contas" className="data-[state=active]:bg-white">
+          <TabsTrigger
+            value="contas"
+            className="data-[state=active]:bg-white data-[state=active]:text-blue-600"
+          >
             <Wallet className="w-4 h-4 mr-2" /> Contas
+          </TabsTrigger>
+          <TabsTrigger
+            value="cartoes"
+            className="data-[state=active]:bg-white data-[state=active]:text-blue-600"
+          >
+            <CreditCard className="w-4 h-4 mr-2" /> Cartões de Crédito
           </TabsTrigger>
         </TabsList>
 
@@ -136,7 +155,21 @@ export default function Config() {
             </CardContent>
           </Card>
         </TabsContent>
-      </Tabs>{' '}
+        <TabsContent value="cartoes">
+          <Card className="border-slate-200">
+            <CardHeader>
+              <CardTitle>Cartões de Crédito</CardTitle>
+              <CardDescription>
+                Gerencie seus cartões de crédito, limites de uso e visualize os totais de suas
+                faturas no mês.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <CreditCardsManager />
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }
