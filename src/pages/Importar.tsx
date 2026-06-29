@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import {
@@ -16,25 +16,68 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { UploadCloud, CheckCircle2, FileSpreadsheet, AlertCircle } from 'lucide-react'
+import {
+  UploadCloud,
+  CheckCircle2,
+  FileSpreadsheet,
+  AlertCircle,
+  Landmark,
+  CreditCard as CreditCardIcon,
+} from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
 import { useAuth } from '@/hooks/use-auth'
 import { categorizeTransactions, processPdf, type CategorizeResult } from '@/services/imports'
 import { createTransaction } from '@/services/transactions'
 import { getAccounts } from '@/services/accounts'
+import { getCreditCards } from '@/services/credit-cards'
 import { prepareTransactionData, formatCurrency } from '@/lib/finance-utils'
 import type { Account } from '@/services/accounts'
+import type { CreditCard } from '@/services/credit-cards'
+
+interface DestinationItem {
+  id: string
+  name: string
+  bank: string
+  type: 'account' | 'credit_card'
+}
 
 export default function Importar() {
   const [step, setStep] = useState(1)
   const [isDragging, setIsDragging] = useState(false)
-  const [bankSource, setBankSource] = useState('itau')
   const [results, setResults] = useState<CategorizeResult[]>([])
   const [isProcessing, setIsProcessing] = useState(false)
-  const [accounts, setAccounts] = useState<Account[]>([])
+  const [destinations, setDestinations] = useState<DestinationItem[]>([])
+  const [selectedDestinationId, setSelectedDestinationId] = useState<string>('')
   const fileRef = useRef<HTMLInputElement>(null)
   const { toast } = useToast()
   const { user } = useAuth()
+
+  useEffect(() => {
+    const loadDestinations = async () => {
+      try {
+        const [accounts, cards] = await Promise.all([getAccounts(), getCreditCards()])
+        const accountItems: DestinationItem[] = accounts
+          .filter((a) => a.active)
+          .map((a) => ({ id: a.id, name: a.name, bank: a.bank || '', type: 'account' as const }))
+        const cardItems: DestinationItem[] = cards
+          .filter((c) => c.active)
+          .map((c) => ({
+            id: c.id,
+            name: c.name,
+            bank: c.bank || '',
+            type: 'credit_card' as const,
+          }))
+        const all = [...accountItems, ...cardItems]
+        setDestinations(all)
+        if (all.length > 0) setSelectedDestinationId(all[0].id)
+      } catch {
+        toast({ title: 'Erro ao carregar contas e cartões', variant: 'destructive' })
+      }
+    }
+    loadDestinations()
+  }, [])
+
+  const selectedDestination = destinations.find((d) => d.id === selectedDestinationId) || null
 
   const handleDrag = (e: React.DragEvent) => {
     e.preventDefault()
@@ -62,12 +105,14 @@ export default function Importar() {
   }
 
   const processFile = async (file: File) => {
+    if (!selectedDestination) {
+      toast({ title: 'Selecione uma conta ou cartão', variant: 'destructive' })
+      return
+    }
     setIsProcessing(true)
     try {
-      const accs = await getAccounts()
-      setAccounts(accs)
       if (file.name.toLowerCase().endsWith('.pdf')) {
-        const { transactions: categorized } = await processPdf(file, bankSource)
+        const { transactions: categorized } = await processPdf(file, selectedDestination.bank)
         setResults(categorized)
       } else {
         const text = await file.text()
@@ -106,26 +151,25 @@ export default function Importar() {
   }
 
   const finalize = async () => {
-    if (!user) return
+    if (!user || !selectedDestination) return
     try {
       for (const r of results) {
-        await createTransaction(
-          prepareTransactionData(
-            {
-              description: r.description,
-              amount: r.amount,
-              type: r.type as any,
-              date: r.date,
-              category: r.category,
-              group: r.group,
-              status: 'paid',
-              user_id: user.id,
-              account_id: accounts[0]?.id || '',
-            },
-            user.id,
-            'import',
-          ),
-        )
+        const baseData: Record<string, any> = {
+          description: r.description,
+          amount: r.amount,
+          type: r.type as any,
+          date: r.date,
+          category: r.category,
+          group: r.group,
+          status: 'paid',
+          user_id: user.id,
+        }
+        if (selectedDestination.type === 'credit_card') {
+          baseData.credit_card_id = selectedDestination.id
+        } else {
+          baseData.account_id = selectedDestination.id
+        }
+        await createTransaction(prepareTransactionData(baseData, user.id, 'import'))
       }
       toast({ title: `${results.length} transações importadas!` })
       setResults([])
@@ -145,14 +189,31 @@ export default function Importar() {
       </div>
 
       <div className="flex items-center gap-4 mb-2">
-        <Select value={bankSource} onValueChange={setBankSource}>
-          <SelectTrigger className="w-48">
-            <SelectValue />
+        <Select value={selectedDestinationId} onValueChange={setSelectedDestinationId}>
+          <SelectTrigger className="w-72">
+            <SelectValue placeholder="Selecione uma conta ou cartão" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="itau">Banco Itaú</SelectItem>
-            <SelectItem value="safra">Banco Safra</SelectItem>
-            <SelectItem value="nubank">Nubank</SelectItem>
+            {destinations.length === 0 ? (
+              <div className="px-3 py-6 text-center text-sm text-slate-500">
+                Nenhuma conta ou cartão encontrado.
+                <br />
+                Cadastre um nas Configurações.
+              </div>
+            ) : (
+              destinations.map((d) => (
+                <SelectItem key={d.id} value={d.id}>
+                  <span className="flex items-center gap-2">
+                    {d.type === 'credit_card' ? (
+                      <CreditCardIcon className="w-4 h-4 text-slate-400" />
+                    ) : (
+                      <Landmark className="w-4 h-4 text-slate-400" />
+                    )}
+                    {d.name}
+                  </span>
+                </SelectItem>
+              ))
+            )}
           </SelectContent>
         </Select>
       </div>
@@ -199,6 +260,7 @@ export default function Importar() {
                 variant="outline"
                 className="bg-white"
                 onClick={() => fileRef.current?.click()}
+                disabled={!selectedDestination}
               >
                 Selecionar Arquivo
               </Button>
