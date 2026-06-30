@@ -26,6 +26,8 @@ import {
   CreditCard as CreditCardIcon,
   Zap,
   Loader2,
+  Check,
+  RotateCcw,
 } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
 import { useAuth } from '@/hooks/use-auth'
@@ -63,6 +65,9 @@ export default function Importar() {
   const [destinations, setDestinations] = useState<DestinationItem[]>([])
   const [selectedDestinationId, setSelectedDestinationId] = useState<string>('')
   const [currentImportId, setCurrentImportId] = useState<string>('')
+  const [isPdfImport, setIsPdfImport] = useState(false)
+  const [createdCount, setCreatedCount] = useState(0)
+  const [duplicatesSkipped, setDuplicatesSkipped] = useState(0)
   const fileRef = useRef<HTMLInputElement>(null)
   const { toast } = useToast()
   const { user } = useAuth()
@@ -114,6 +119,20 @@ export default function Importar() {
     }
   })
 
+  const resetState = () => {
+    setResults([])
+    setStep(1)
+    setProgress(0)
+    setProgressLabel('')
+    setMatchedCount(0)
+    setUnmatchedCount(0)
+    setAutoCreatedCount(0)
+    setCurrentImportId('')
+    setCreatedCount(0)
+    setDuplicatesSkipped(0)
+    setIsPdfImport(false)
+  }
+
   const handleDrag = (e: React.DragEvent) => {
     e.preventDefault()
     e.stopPropagation()
@@ -151,27 +170,31 @@ export default function Importar() {
 
     try {
       if (file.name.toLowerCase().endsWith('.pdf')) {
+        setIsPdfImport(true)
         setProgress(30)
-        setProgressLabel('Extraindo texto do PDF...')
-        const response = await processPdf(file, selectedDestination.bank)
+        setProgressLabel('Extraindo texto do PDF e criando transações...')
+        const accountId = selectedDestination.type === 'account' ? selectedDestination.id : ''
+        const creditCardId =
+          selectedDestination.type === 'credit_card' ? selectedDestination.id : ''
+        const response = await processPdf(file, selectedDestination.bank, accountId, creditCardId)
         if (
           response.status === 'error' ||
           !response.transactions ||
           response.transactions.length === 0
         ) {
-          throw new Error(
-            response.error ||
-              'Nenhuma transação encontrada no PDF. O arquivo pode estar compactado ou digitalizado. Tente exportar como CSV.',
-          )
+          throw new Error(response.error || 'Nenhuma transação encontrada no PDF.')
         }
         setCurrentImportId(response.import_id || '')
-        setProgress(75)
-        setProgressLabel('Categorização concluída!')
+        setProgress(80)
+        setProgressLabel('Transações criadas automaticamente!')
         setResults(response.transactions)
         setMatchedCount(response.matched_count || 0)
         setUnmatchedCount(response.unmatched_count || 0)
         setAutoCreatedCount(response.auto_created_count || 0)
+        setCreatedCount(response.created_count || 0)
+        setDuplicatesSkipped(response.duplicates_skipped || 0)
       } else {
+        setIsPdfImport(false)
         setProgress(25)
         setProgressLabel('Lendo arquivo CSV...')
         const text = await file.text()
@@ -196,18 +219,20 @@ export default function Importar() {
       setTimeout(() => setStep(3), 300)
     } catch (err: any) {
       const errorDesc = err?.response?.error || err?.message || 'Erro desconhecido'
-      const isNotFound =
-        err?.status === 404 ||
-        errorDesc.toLowerCase().includes('not found') ||
-        errorDesc.toLowerCase().includes('não encontrado')
+      const isNotFound = err?.status === 404 || errorDesc.toLowerCase().includes('not found')
+      const isServerError = err?.status === 503 || err?.status === 500
       toast({
-        title: isNotFound ? 'Endpoint não encontrado' : 'Erro ao processar arquivo',
+        title: isServerError
+          ? 'Algo deu errado'
+          : isNotFound
+            ? 'Endpoint não encontrado'
+            : 'Erro ao processar arquivo',
         description: isNotFound
           ? 'O serviço de processamento não está disponível. Verifique sua conexão e tente novamente.'
           : errorDesc,
         variant: 'destructive',
       })
-      setStep(1)
+      resetState()
     }
     setIsProcessing(false)
   }
@@ -220,15 +245,12 @@ export default function Importar() {
   }
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files?.[0]) {
-      processFile(e.target.files[0])
-    }
+    if (e.target.files?.[0]) processFile(e.target.files[0])
   }
 
-  const finalize = async () => {
+  const finalizeCsv = async () => {
     if (!user || !selectedDestination) return
     setIsSaving(true)
-
     try {
       const txBatch = results.map((r) => {
         const baseData: Record<string, any> = {
@@ -240,54 +262,29 @@ export default function Importar() {
           group: r.group,
           status: 'paid',
           user_id: user.id,
-          source: `PDF Import - ${selectedDestination.name}`,
+          source: `CSV Import - ${selectedDestination.name}`,
         }
-        if (selectedDestination.type === 'credit_card') {
+        if (selectedDestination.type === 'credit_card')
           baseData.credit_card_id = selectedDestination.id
-        } else {
-          baseData.account_id = selectedDestination.id
-        }
+        else baseData.account_id = selectedDestination.id
         return prepareTransactionData(baseData, user.id, 'import')
       })
-
       const BATCH_SIZE = 50
       let totalCreated = 0
       const allErrors: Array<{ index: number; error: string }> = []
-
       for (let i = 0; i < txBatch.length; i += BATCH_SIZE) {
         const chunk = txBatch.slice(i, i + BATCH_SIZE)
         const result = await batchCreateTransactions(chunk)
         totalCreated += result.created
-        if (result.errors.length > 0) {
-          allErrors.push(...result.errors)
-        }
+        if (result.errors.length > 0) allErrors.push(...result.errors)
       }
-
       if (allErrors.length > 0 && totalCreated === 0) {
         throw new Error(allErrors[0]?.error || 'Falha ao criar transações')
       }
-
-      const descParts: string[] = []
-      if (matchedCount > 0) descParts.push(`${matchedCount} por OCR local`)
-      if (unmatchedCount > 0) descParts.push(`${unmatchedCount} por IA`)
-      if (autoCreatedCount > 0) descParts.push(`${autoCreatedCount} categorias criadas`)
-      toast({
-        title: `${totalCreated} transações importadas!`,
-        description: descParts.length > 0 ? descParts.join(', ') : undefined,
-      })
-      setResults([])
-      setStep(1)
-      setProgress(0)
-      setMatchedCount(0)
-      setUnmatchedCount(0)
-      setAutoCreatedCount(0)
-      setCurrentImportId('')
+      toast({ title: `${totalCreated} transações importadas!` })
+      resetState()
     } catch (e: any) {
-      toast({
-        title: 'Erro ao salvar',
-        description: e?.message || undefined,
-        variant: 'destructive',
-      })
+      toast({ title: 'Erro ao salvar', description: e?.message, variant: 'destructive' })
     }
     setIsSaving(false)
   }
@@ -360,8 +357,8 @@ export default function Importar() {
                 Arraste e solte o arquivo CSV ou PDF aqui
               </h3>
               <p className="text-slate-500 text-sm mb-6 max-w-sm">
-                Suporte para arquivos .csv e .pdf. OCR local categoriza instantaneamente, IA apenas
-                para casos incertos.
+                Suporte para arquivos .csv e .pdf. PDFs são processados automaticamente — transações
+                são criadas sem intervenção manual.
               </p>
               <input
                 ref={fileRef}
@@ -391,9 +388,7 @@ export default function Importar() {
         {(step === 2 || isProcessing) && (
           <CardContent className="p-12 text-center">
             <div className="flex flex-col items-center gap-4">
-              <div className="relative">
-                <Loader2 className="w-12 h-12 text-emerald-600 animate-spin" />
-              </div>
+              <Loader2 className="w-12 h-12 text-emerald-600 animate-spin" />
               <h3 className="text-lg font-semibold text-slate-900">
                 {progressLabel || 'Processando...'}
               </h3>
@@ -412,18 +407,32 @@ export default function Importar() {
           <>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <FileSpreadsheet className="w-5 h-5 text-emerald-600" />
-                Pré-visualização ({results.length} transações)
+                {isPdfImport ? (
+                  <Check className="w-5 h-5 text-emerald-600" />
+                ) : (
+                  <FileSpreadsheet className="w-5 h-5 text-emerald-600" />
+                )}
+                {isPdfImport
+                  ? `Importação concluída — ${createdCount} transações criadas`
+                  : `Pré-visualização (${results.length} transações)`}
               </CardTitle>
               <CardDescription className="flex items-center gap-3 flex-wrap">
-                <span>
-                  Verifique os dados antes de confirmar. Verde = alta confiança, Amarelo = incerto.
-                </span>
+                {isPdfImport ? (
+                  <span>
+                    {createdCount} transações inseridas no banco de dados
+                    {duplicatesSkipped > 0 && ` · ${duplicatesSkipped} duplicatas ignoradas`}
+                    {autoCreatedCount > 0 && ` · ${autoCreatedCount} categorias criadas`}
+                  </span>
+                ) : (
+                  <span>
+                    Verifique os dados antes de confirmar. Verde = alta confiança, Amarelo =
+                    incerto.
+                  </span>
+                )}
                 {matchedCount > 0 && (
                   <span className="inline-flex items-center gap-1 text-emerald-600 font-medium">
                     <Zap className="w-3.5 h-3.5" />
                     {matchedCount} por OCR local · {unmatchedCount} por IA
-                    {autoCreatedCount > 0 && ` · ${autoCreatedCount} categorias criadas`}
                   </span>
                 )}
               </CardDescription>
@@ -486,34 +495,32 @@ export default function Importar() {
                 </span>
               </div>
               <div className="flex justify-end gap-3 mt-6">
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    setStep(1)
-                    setResults([])
-                    setProgress(0)
-                    setMatchedCount(0)
-                    setUnmatchedCount(0)
-                    setAutoCreatedCount(0)
-                    setCurrentImportId('')
-                  }}
-                >
-                  Cancelar
-                </Button>
-                <Button
-                  className="bg-emerald-600 hover:bg-emerald-700"
-                  onClick={finalize}
-                  disabled={isSaving}
-                >
-                  {isSaving ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Salvando em lote...
-                    </>
-                  ) : (
-                    `Confirmar Importação (${results.length})`
-                  )}
-                </Button>
+                {isPdfImport ? (
+                  <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={resetState}>
+                    <RotateCcw className="w-4 h-4 mr-2" />
+                    Importar Outro Arquivo
+                  </Button>
+                ) : (
+                  <>
+                    <Button variant="outline" onClick={resetState}>
+                      Cancelar
+                    </Button>
+                    <Button
+                      className="bg-emerald-600 hover:bg-emerald-700"
+                      onClick={finalizeCsv}
+                      disabled={isSaving}
+                    >
+                      {isSaving ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          Salvando em lote...
+                        </>
+                      ) : (
+                        `Confirmar Importação (${results.length})`
+                      )}
+                    </Button>
+                  </>
+                )}
               </div>
             </CardContent>
           </>

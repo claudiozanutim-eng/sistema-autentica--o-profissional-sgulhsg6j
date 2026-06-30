@@ -42,7 +42,9 @@ export interface PdfProcessResponse {
   matched_count: number
   unmatched_count: number
   auto_created_count?: number
+  created_count?: number
   duplicates_skipped?: number
+  errors?: Array<{ index: number; error: string }>
 }
 
 export interface BatchCreateResult {
@@ -64,10 +66,17 @@ export const createImport = (data: FormData) => pb.collection<ImportRecord>('imp
 export const getImports = () =>
   pb.collection<ImportRecord>('imports').getFullList({ sort: '-created' })
 
-export const processPdf = (file: File, bankSource: string) => {
+export const processPdf = (
+  file: File,
+  bankSource: string,
+  accountId?: string,
+  creditCardId?: string,
+) => {
   const formData = new FormData()
   formData.append('file', file)
   formData.append('bank_source', bankSource)
+  if (accountId) formData.append('account_id', accountId)
+  if (creditCardId) formData.append('credit_card_id', creditCardId)
   return pb.send<PdfProcessResponse>('/backend/v1/import-pdf', {
     method: 'POST',
     body: formData,
