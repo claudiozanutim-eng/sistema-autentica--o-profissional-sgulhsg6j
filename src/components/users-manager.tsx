@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { getUsers, createUser, updateUser, getAvatarUrl, type UserRecord } from '@/services/users'
 import { useRealtime } from '@/hooks/use-realtime'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
+import { Skeleton } from '@/components/ui/skeleton'
 import {
   Select,
   SelectContent,
@@ -33,19 +34,24 @@ export function UsersManager() {
   const [isOpen, setIsOpen] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [form, setForm] = useState(EMPTY_FORM)
+  const [loading, setLoading] = useState(true)
+  const [submitting, setSubmitting] = useState(false)
   const { toast } = useToast()
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
-      setUsers(await getUsers())
+      const result = await getUsers()
+      setUsers(Array.isArray(result) ? result : [])
     } catch (err) {
       toast({ title: getErrorMessage(err), variant: 'destructive' })
+    } finally {
+      setLoading(false)
     }
-  }
+  }, [toast])
 
   useEffect(() => {
     loadData()
-  }, [])
+  }, [loadData])
   useRealtime('users', () => loadData())
 
   const openCreate = () => {
@@ -55,13 +61,14 @@ export function UsersManager() {
   }
 
   const openEdit = (u: UserRecord) => {
-    setForm({ name: u.name, email: u.email, role: u.role || 'admin' })
+    setForm({ name: u.name || '', email: u.email || '', role: u.role || 'admin' })
     setEditingId(u.id)
     setIsOpen(true)
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    setSubmitting(true)
     try {
       if (editingId) {
         await updateUser(editingId, form)
@@ -73,6 +80,8 @@ export function UsersManager() {
       setIsOpen(false)
     } catch (err) {
       toast({ title: getErrorMessage(err), variant: 'destructive' })
+    } finally {
+      setSubmitting(false)
     }
   }
 
@@ -94,7 +103,15 @@ export function UsersManager() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {users.length === 0 ? (
+            {loading ? (
+              Array.from({ length: 3 }).map((_, i) => (
+                <TableRow key={i}>
+                  <TableCell colSpan={4}>
+                    <Skeleton className="h-8 w-full" />
+                  </TableCell>
+                </TableRow>
+              ))
+            ) : users.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={4} className="text-center py-8 text-slate-500">
                   Nenhum usuário cadastrado.
@@ -106,7 +123,7 @@ export function UsersManager() {
                   <TableCell>
                     <div className="flex items-center gap-3">
                       <Avatar className="w-8 h-8">
-                        {u.avatar && <AvatarImage src={getAvatarUrl(u)} alt={u.name} />}
+                        {u.avatar && <AvatarImage src={getAvatarUrl(u)} alt={u.name || 'User'} />}
                         <AvatarFallback className="bg-blue-100 text-blue-700 text-xs">
                           {u.name?.charAt(0).toUpperCase() || 'U'}
                         </AvatarFallback>
@@ -114,7 +131,7 @@ export function UsersManager() {
                       <span className="font-medium text-slate-900">{u.name || 'Sem nome'}</span>
                     </div>
                   </TableCell>
-                  <TableCell className="text-slate-600">{u.email}</TableCell>
+                  <TableCell className="text-slate-600">{u.email || '-'}</TableCell>
                   <TableCell>
                     <Badge
                       className={
@@ -185,8 +202,12 @@ export function UsersManager() {
                 atribuída automaticamente.
               </p>
             )}
-            <Button type="submit" className="w-full bg-blue-600 hover:bg-blue-700">
-              {editingId ? 'Atualizar Usuário' : 'Criar Usuário'}
+            <Button
+              type="submit"
+              disabled={submitting}
+              className="w-full bg-blue-600 hover:bg-blue-700"
+            >
+              {submitting ? 'Salvando...' : editingId ? 'Atualizar Usuário' : 'Criar Usuário'}
             </Button>
           </form>
         </DialogContent>

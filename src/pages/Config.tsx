@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { Navigate } from 'react-router-dom'
 import { useAuth } from '@/hooks/use-auth'
 import { AuditLogViewer } from '@/components/audit-log-viewer'
@@ -26,6 +26,12 @@ export default function Config() {
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null)
   const [newPass, setNewPass] = useState('')
   const [confirmPass, setConfirmPass] = useState('')
+  const [savingProfile, setSavingProfile] = useState(false)
+  const [savingPassword, setSavingPassword] = useState(false)
+
+  useEffect(() => {
+    if (user?.name) setName(user.name)
+  }, [user?.name])
 
   if (!isAdmin) {
     return <Navigate to="/dashboard" replace />
@@ -44,14 +50,21 @@ export default function Config() {
 
   const saveProfile = async (e: React.FormEvent) => {
     e.preventDefault()
-    const { error } = await updateProfile({ name, avatar: avatarFile || undefined })
-    if (error) {
-      toast({ title: getErrorMessage(error), variant: 'destructive' })
-      return
+    setSavingProfile(true)
+    try {
+      const { error } = await updateProfile({ name, avatar: avatarFile || undefined })
+      if (error) {
+        toast({ title: getErrorMessage(error), variant: 'destructive' })
+        return
+      }
+      setAvatarFile(null)
+      setAvatarPreview(null)
+      toast({ title: 'Perfil atualizado com sucesso.' })
+    } catch (err) {
+      toast({ title: getErrorMessage(err), variant: 'destructive' })
+    } finally {
+      setSavingProfile(false)
     }
-    setAvatarFile(null)
-    setAvatarPreview(null)
-    toast({ title: 'Perfil atualizado com sucesso.' })
   }
 
   const savePassword = async (e: React.FormEvent) => {
@@ -64,14 +77,21 @@ export default function Config() {
       toast({ title: 'As senhas não conferem.', variant: 'destructive' })
       return
     }
-    const { error } = await updatePassword(newPass, confirmPass)
-    if (error) {
-      toast({ title: getErrorMessage(error), variant: 'destructive' })
-      return
+    setSavingPassword(true)
+    try {
+      const { error } = await updatePassword(newPass, confirmPass)
+      if (error) {
+        toast({ title: getErrorMessage(error), variant: 'destructive' })
+        return
+      }
+      setNewPass('')
+      setConfirmPass('')
+      toast({ title: 'Senha atualizada com sucesso.' })
+    } catch (err) {
+      toast({ title: getErrorMessage(err), variant: 'destructive' })
+    } finally {
+      setSavingPassword(false)
     }
-    setNewPass('')
-    setConfirmPass('')
-    toast({ title: 'Senha atualizada com sucesso.' })
   }
 
   const tabCls = 'data-[state=active]:bg-white data-[state=active]:text-blue-600'
@@ -155,8 +175,8 @@ export default function Config() {
                     Para alterar seu e-mail contate o administrador do sistema.
                   </p>
                 </div>
-                <Button type="submit" className={btnCls}>
-                  Salvar Alterações
+                <Button type="submit" disabled={savingProfile} className={btnCls}>
+                  {savingProfile ? 'Salvando...' : 'Salvar Alterações'}
                 </Button>
               </form>
             </CardContent>
@@ -191,8 +211,8 @@ export default function Config() {
                     onChange={(e) => setConfirmPass(e.target.value)}
                   />
                 </div>
-                <Button type="submit" className={btnCls}>
-                  Atualizar Senha
+                <Button type="submit" disabled={savingPassword} className={btnCls}>
+                  {savingPassword ? 'Salvando...' : 'Atualizar Senha'}
                 </Button>
               </form>
             </CardContent>

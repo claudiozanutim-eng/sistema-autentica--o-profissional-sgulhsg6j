@@ -70,6 +70,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       if (data.name !== undefined) updateData.name = data.name
       if (data.avatar) updateData.avatar = data.avatar
       const updated = await pb.collection('users').update(user.id, updateData)
+      pb.authStore.save(pb.authStore.token, updated)
       setUser(updated)
       return { error: null }
     } catch (error) {
