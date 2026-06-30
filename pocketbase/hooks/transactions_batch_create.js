@@ -10,6 +10,53 @@ routerAdd(
     if (transactions.length > 500) return e.badRequestError('Too many transactions (max 500)')
 
     var txCol = $app.findCollectionByNameOrId('transactions')
+
+    var coaRecords = $app.findRecordsByFilter('chart_of_accounts', 'active = true', 'code', 200, 0)
+    var existingCombos = {}
+    coaRecords.forEach(function (r) {
+      existingCombos[r.getString('group') + '|||' + r.getString('category')] = true
+    })
+
+    var coaCol = $app.findCollectionByNameOrId('chart_of_accounts')
+    var uniqueCombos = {}
+    transactions.forEach(function (tx) {
+      var g = tx.group || 'Outros'
+      var c = tx.category || 'Não Classificado'
+      var key = g + '|||' + c
+      if (!uniqueCombos[key]) {
+        uniqueCombos[key] = { group: g, category: c, type: tx.type || 'expense' }
+      }
+    })
+    var autoCreatedCount = 0
+    Object.keys(uniqueCombos).forEach(function (key) {
+      if (!existingCombos[key]) {
+        var combo = uniqueCombos[key]
+        try {
+          var newCoa = new Record(coaCol)
+          newCoa.set('group', combo.group)
+          newCoa.set('category', combo.category)
+          newCoa.set('type', combo.type)
+          newCoa.set('ocr_terms', '')
+          newCoa.set('code', '')
+          newCoa.set('active', true)
+          $app.save(newCoa)
+          autoCreatedCount++
+        } catch (err) {
+          $app
+            .logger()
+            .error(
+              'Failed to auto-create COA entry in batch',
+              'group',
+              combo.group,
+              'category',
+              combo.category,
+              'error',
+              err.message || '',
+            )
+        }
+      }
+    })
+
     var created = []
     var errors = []
 
@@ -45,6 +92,7 @@ routerAdd(
       created: created.length,
       errors: errors,
       total: transactions.length,
+      auto_created_count: autoCreatedCount,
     })
   },
   $apis.requireAuth(),

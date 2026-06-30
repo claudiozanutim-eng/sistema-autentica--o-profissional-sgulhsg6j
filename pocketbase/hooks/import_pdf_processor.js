@@ -28,6 +28,28 @@ routerAdd(
       return bytes
     }
 
+    function extractTextFromContent(content) {
+      var text = ''
+      var tjMatches = content.match(/\(([^)]*)\)\s*Tj/g)
+      if (tjMatches) {
+        tjMatches.forEach(function (m) {
+          text += m.replace(/\)\s*Tj$/, '').replace(/^\(/, '') + ' '
+        })
+      }
+      var tjArrays = content.match(/\[([^\]]*)\]\s*TJ/g)
+      if (tjArrays) {
+        tjArrays.forEach(function (m) {
+          var parts = m.match(/\(([^)]*)\)/g)
+          if (parts) {
+            parts.forEach(function (p) {
+              text += p.replace(/[()]/g, '')
+            })
+          }
+        })
+      }
+      return text
+    }
+
     function extractPdfText(bytes) {
       var raw = ''
       for (var i = 0; i < bytes.length; i++) raw += String.fromCharCode(bytes[i])
@@ -35,24 +57,56 @@ routerAdd(
       var streamRegex = /stream\r?\n([\s\S]*?)endstream/g
       var match
       while ((match = streamRegex.exec(raw)) !== null) {
-        var streamData = match[1]
-        var decoded = streamData
-        var tjMatches = decoded.match(/\(([^)]*)\)\s*Tj/g)
-        if (tjMatches)
-          tjMatches.forEach(function (m) {
-            text += m.replace(/\)\s*Tj$/, '').replace(/^\(/, '') + ' '
-          })
-        var tjArrays = decoded.match(/\[([^\]]*)\]\s*TJ/g)
-        if (tjArrays)
-          tjArrays.forEach(function (m) {
-            var parts = m.match(/\(([^)]*)\)/g)
-            if (parts)
-              parts.forEach(function (p) {
-                text += p.replace(/[()]/g, '') + ' '
-              })
-          })
+        text += extractTextFromContent(match[1]) + '\n'
       }
-      return text.trim()
+      if (text.length < 20) {
+        text += extractTextFromContent(raw)
+      }
+      text = text.replace(/\\n/g, '\n').replace(/\\r/g, '').replace(/\\t/g, ' ')
+      text = text.replace(/[^\x20-\x7E\n]/g, ' ')
+      text = text.replace(/  +/g, ' ').trim()
+      return text
+    }
+
+    function autoCreateMissingCategories(transactions, existingCombos) {
+      var coaCol = $app.findCollectionByNameOrId('chart_of_accounts')
+      var uniqueCombos = {}
+      transactions.forEach(function (t) {
+        var key = t.group + '|||' + t.category
+        if (!uniqueCombos[key]) {
+          uniqueCombos[key] = { group: t.group, category: t.category, type: t.type }
+        }
+      })
+      var created = 0
+      Object.keys(uniqueCombos).forEach(function (key) {
+        if (!existingCombos[key]) {
+          var combo = uniqueCombos[key]
+          try {
+            var newCoa = new Record(coaCol)
+            newCoa.set('group', combo.group)
+            newCoa.set('category', combo.category)
+            newCoa.set('type', combo.type)
+            newCoa.set('ocr_terms', '')
+            newCoa.set('code', '')
+            newCoa.set('active', true)
+            $app.save(newCoa)
+            created++
+          } catch (err) {
+            $app
+              .logger()
+              .error(
+                'Failed to auto-create COA entry',
+                'group',
+                combo.group,
+                'category',
+                combo.category,
+                'error',
+                err.message || '',
+              )
+          }
+        }
+      })
+      return created
     }
 
     var importsCol = $app.findCollectionByNameOrId('imports')
@@ -73,7 +127,7 @@ routerAdd(
       var pdfText = extractPdfText(fileBytes)
       if (!pdfText || pdfText.length < 10) {
         throw new Error(
-          'Não foi possível extrair texto do PDF. O arquivo pode estar criptografado ou inválido.',
+          'Não foi possível extrair texto do PDF. O arquivo pode estar criptografado, compactado ou inválido.',
         )
       }
 
@@ -87,6 +141,7 @@ routerAdd(
 
       var termMap = {}
       var coaList = []
+      var existingCombos = {}
       coaRecords.forEach(function (r) {
         var terms = (r.getString('ocr_terms') || '')
           .toLowerCase()
@@ -101,6 +156,7 @@ routerAdd(
           type: r.getString('type'),
         }
         coaList.push(entry)
+        existingCombos[entry.group + '|||' + entry.category] = true
         terms.forEach(function (term) {
           termMap[term] = entry
         })
@@ -113,6 +169,9 @@ routerAdd(
         itau: 'Itaú statements: dates may be DD/MM, credits marked C, debits D.',
         safra: 'Safra statements: dates typically DD/MM/YYYY.',
         nubank: 'Nubank statements: dates DD/MM/YYYY, amounts may have R$ prefix.',
+        bradesco: 'Bradesco statements: dates DD/MM/YYYY, amounts with decimal comma.',
+        santander:
+          'Santander statements: dates DD/MM/YYYY, credits and debits in separate columns.',
       }
 
       var reply = $ai.chat({
@@ -189,7 +248,7 @@ routerAdd(
                 {
                   role: 'system',
                   content:
-                    'You are a financial categorization assistant. Given the chart of accounts and transactions, assign group, category, and type. Respond ONLY with a JSON array. Each element: {"index": N (1-based within this batch), "group": "", "category": "", "type": "income|expense"}.',
+                    'You are a financial categorization assistant. Given the chart of accounts and transactions, assign group, category, and type. You may suggest NEW groups and categories if none fit. Respond ONLY with a JSON array. Each element: {"index": N (1-based within this batch), "group": "", "category": "", "type": "income|expense"}.',
                 },
                 {
                   role: 'user',
@@ -228,6 +287,8 @@ routerAdd(
         if (!t.category) t.category = 'Não Classificado'
       })
 
+      var autoCreatedCount = autoCreateMissingCategories(transactions, existingCombos)
+
       importRecord.set('status', 'completed')
       importRecord.set('transactions_json', JSON.stringify(transactions))
       $app.save(importRecord)
@@ -237,6 +298,7 @@ routerAdd(
         import_id: importRecord.id,
         matched_count: matchedCount,
         unmatched_count: transactions.length - matchedCount,
+        auto_created_count: autoCreatedCount,
       })
     } catch (err) {
       importRecord.set('status', 'error')

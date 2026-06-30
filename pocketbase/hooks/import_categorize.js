@@ -10,6 +10,7 @@ routerAdd(
     var coaRecords = $app.findRecordsByFilter('chart_of_accounts', 'active = true', 'code', 200, 0)
     var termMap = {}
     var coaList = []
+    var existingCombos = {}
     coaRecords.forEach(function (r) {
       var terms = (r.getString('ocr_terms') || '')
         .toLowerCase()
@@ -24,6 +25,7 @@ routerAdd(
         type: r.getString('type'),
       }
       coaList.push(entry)
+      existingCombos[entry.group + '|||' + entry.category] = true
       terms.forEach(function (term) {
         termMap[term] = entry
       })
@@ -93,7 +95,7 @@ routerAdd(
               {
                 role: 'system',
                 content:
-                  'You are a financial categorization assistant. Given the chart of accounts and transactions, assign group, category, and type. Respond ONLY with a JSON array. Each element: {"index": N (1-based within this batch), "group": "", "category": "", "type": "income|expense"}.',
+                  'You are a financial categorization assistant. Given the chart of accounts and transactions, assign group, category, and type. You may suggest NEW groups and categories if none fit. Respond ONLY with a JSON array. Each element: {"index": N (1-based within this batch), "group": "", "category": "", "type": "income|expense"}.',
               },
               {
                 role: 'user',
@@ -130,10 +132,50 @@ routerAdd(
     var all = matched.concat(unmatched).sort(function (a, b) {
       return a.index - b.index
     })
+
+    var coaCol = $app.findCollectionByNameOrId('chart_of_accounts')
+    var uniqueCombos = {}
+    all.forEach(function (t) {
+      var key = t.group + '|||' + t.category
+      if (!uniqueCombos[key]) {
+        uniqueCombos[key] = { group: t.group, category: t.category, type: t.type }
+      }
+    })
+    var autoCreatedCount = 0
+    Object.keys(uniqueCombos).forEach(function (key) {
+      if (!existingCombos[key]) {
+        var combo = uniqueCombos[key]
+        try {
+          var newCoa = new Record(coaCol)
+          newCoa.set('group', combo.group)
+          newCoa.set('category', combo.category)
+          newCoa.set('type', combo.type)
+          newCoa.set('ocr_terms', '')
+          newCoa.set('code', '')
+          newCoa.set('active', true)
+          $app.save(newCoa)
+          autoCreatedCount++
+        } catch (err) {
+          $app
+            .logger()
+            .error(
+              'Failed to auto-create COA entry',
+              'group',
+              combo.group,
+              'category',
+              combo.category,
+              'error',
+              err.message || '',
+            )
+        }
+      }
+    })
+
     return e.json(200, {
       transactions: all,
       matched_count: matched.length,
       unmatched_count: unmatched.length,
+      auto_created_count: autoCreatedCount,
     })
   },
   $apis.requireAuth(),

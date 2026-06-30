@@ -31,6 +31,7 @@ export interface CategorizeResponse {
   transactions: CategorizeResult[]
   matched_count: number
   unmatched_count: number
+  auto_created_count?: number
 }
 
 export interface PdfProcessResponse {
@@ -38,12 +39,14 @@ export interface PdfProcessResponse {
   import_id: string
   matched_count: number
   unmatched_count: number
+  auto_created_count?: number
 }
 
 export interface BatchCreateResult {
   created: number
   errors: Array<{ index: number; error: string }>
   total: number
+  auto_created_count?: number
 }
 
 export const categorizeTransactions = (rows: CategorizeRow[]) =>

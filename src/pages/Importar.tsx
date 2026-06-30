@@ -58,6 +58,7 @@ export default function Importar() {
   const [progressLabel, setProgressLabel] = useState('')
   const [matchedCount, setMatchedCount] = useState(0)
   const [unmatchedCount, setUnmatchedCount] = useState(0)
+  const [autoCreatedCount, setAutoCreatedCount] = useState(0)
   const [destinations, setDestinations] = useState<DestinationItem[]>([])
   const [selectedDestinationId, setSelectedDestinationId] = useState<string>('')
   const fileRef = useRef<HTMLInputElement>(null)
@@ -141,6 +142,7 @@ export default function Importar() {
         setResults(response.transactions)
         setMatchedCount(response.matched_count || 0)
         setUnmatchedCount(response.unmatched_count || 0)
+        setAutoCreatedCount(response.auto_created_count || 0)
       } else {
         setProgress(25)
         setProgressLabel('Lendo arquivo CSV...')
@@ -160,6 +162,7 @@ export default function Importar() {
         setResults(response.transactions)
         setMatchedCount(response.matched_count || 0)
         setUnmatchedCount(response.unmatched_count || 0)
+        setAutoCreatedCount(response.auto_created_count || 0)
       }
       setProgress(100)
       setTimeout(() => setStep(3), 300)
@@ -228,16 +231,20 @@ export default function Importar() {
         throw new Error(allErrors[0]?.error || 'Falha ao criar transações')
       }
 
+      const descParts: string[] = []
+      if (matchedCount > 0) descParts.push(`${matchedCount} por OCR local`)
+      if (unmatchedCount > 0) descParts.push(`${unmatchedCount} por IA`)
+      if (autoCreatedCount > 0) descParts.push(`${autoCreatedCount} categorias criadas`)
       toast({
         title: `${totalCreated} transações importadas!`,
-        description:
-          matchedCount > 0 ? `${matchedCount} por OCR local, ${unmatchedCount} por IA` : undefined,
+        description: descParts.length > 0 ? descParts.join(', ') : undefined,
       })
       setResults([])
       setStep(1)
       setProgress(0)
       setMatchedCount(0)
       setUnmatchedCount(0)
+      setAutoCreatedCount(0)
     } catch (e: any) {
       toast({
         title: 'Erro ao salvar',
@@ -379,6 +386,7 @@ export default function Importar() {
                   <span className="inline-flex items-center gap-1 text-emerald-600 font-medium">
                     <Zap className="w-3.5 h-3.5" />
                     {matchedCount} por OCR local · {unmatchedCount} por IA
+                    {autoCreatedCount > 0 && ` · ${autoCreatedCount} categorias criadas`}
                   </span>
                 )}
               </CardDescription>
@@ -449,6 +457,7 @@ export default function Importar() {
                     setProgress(0)
                     setMatchedCount(0)
                     setUnmatchedCount(0)
+                    setAutoCreatedCount(0)
                   }}
                 >
                   Cancelar
