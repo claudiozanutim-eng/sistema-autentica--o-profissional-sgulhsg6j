@@ -19,10 +19,6 @@ import { getErrorMessage } from '@/lib/pocketbase/errors'
 
 export default function Config() {
   const { user, updateProfile, updatePassword, isAdmin } = useAuth()
-
-  if (!isAdmin) {
-    return <Navigate to="/dashboard" replace />
-  }
   const { toast } = useToast()
   const fileRef = useRef<HTMLInputElement>(null)
   const [name, setName] = useState(user?.name || '')
@@ -30,6 +26,10 @@ export default function Config() {
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null)
   const [newPass, setNewPass] = useState('')
   const [confirmPass, setConfirmPass] = useState('')
+
+  if (!isAdmin) {
+    return <Navigate to="/dashboard" replace />
+  }
 
   const avatarUrl = user?.avatar
     ? getAvatarUrl({ id: user.id, avatar: user.avatar as string })
