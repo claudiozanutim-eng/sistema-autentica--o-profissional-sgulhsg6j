@@ -5,12 +5,17 @@ export interface UserRecord {
   name: string
   email: string
   avatar: string
+  role: string
   created?: string
 }
 
 export const getUsers = (): Promise<UserRecord[]> => pb.send('/backend/v1/users', { method: 'GET' })
 
-export const createUser = (data: { name: string; email: string }): Promise<UserRecord> =>
+export const createUser = (data: {
+  name: string
+  email: string
+  role?: string
+}): Promise<UserRecord> =>
   pb.send('/backend/v1/users', {
     method: 'POST',
     body: JSON.stringify(data),
@@ -19,7 +24,7 @@ export const createUser = (data: { name: string; email: string }): Promise<UserR
 
 export const updateUser = (
   id: string,
-  data: { name?: string; email?: string },
+  data: { name?: string; email?: string; role?: string },
 ): Promise<UserRecord> =>
   pb.send(`/backend/v1/users/${id}`, {
     method: 'PUT',

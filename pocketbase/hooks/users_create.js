@@ -18,6 +18,7 @@ routerAdd(
       record.setPassword('Skip@Pass')
       record.setVerified(true)
       record.set('name', body.name.trim())
+      record.set('role', body.role || 'admin')
       $app.save(record)
 
       return e.json(201, {
@@ -25,6 +26,7 @@ routerAdd(
         name: record.getString('name'),
         email: record.getEmail(),
         avatar: record.getString('avatar'),
+        role: record.getString('role') || 'admin',
       })
     } catch (err) {
       return e.json(500, { error: 'failed to create user' })

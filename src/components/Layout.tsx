@@ -39,9 +39,11 @@ const navItems = [
 
 function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
   const location = useLocation()
+  const { isAdmin } = useAuth()
+  const visibleItems = isAdmin ? navItems : navItems.filter((item) => item.path !== '/config')
   return (
     <nav className="flex-1 py-6 px-3 space-y-1">
-      {navItems.map((item) => {
+      {visibleItems.map((item) => {
         const isActive = location.pathname === item.path
         return (
           <Link

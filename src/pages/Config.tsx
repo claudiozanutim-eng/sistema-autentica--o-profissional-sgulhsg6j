@@ -1,5 +1,7 @@
 import { useState, useRef } from 'react'
+import { Navigate } from 'react-router-dom'
 import { useAuth } from '@/hooks/use-auth'
+import { AuditLogViewer } from '@/components/audit-log-viewer'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
@@ -8,7 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Switch } from '@/components/ui/switch'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { useToast } from '@/hooks/use-toast'
-import { User, Lock, Settings, Wallet, CreditCard, Users, Camera } from 'lucide-react'
+import { User, Lock, Settings, Wallet, CreditCard, Users, Camera, ScrollText } from 'lucide-react'
 import { AccountsManager } from '@/components/accounts-manager'
 import { CreditCardsManager } from '@/components/credit-cards-manager'
 import { UsersManager } from '@/components/users-manager'
@@ -16,7 +18,11 @@ import { getAvatarUrl } from '@/services/users'
 import { getErrorMessage } from '@/lib/pocketbase/errors'
 
 export default function Config() {
-  const { user, updateProfile, updatePassword } = useAuth()
+  const { user, updateProfile, updatePassword, isAdmin } = useAuth()
+
+  if (!isAdmin) {
+    return <Navigate to="/dashboard" replace />
+  }
   const { toast } = useToast()
   const fileRef = useRef<HTMLInputElement>(null)
   const [name, setName] = useState(user?.name || '')
@@ -96,6 +102,9 @@ export default function Config() {
           </TabsTrigger>
           <TabsTrigger value="usuarios" className={tabCls}>
             <Users className="w-4 h-4 mr-2" /> Usuários
+          </TabsTrigger>
+          <TabsTrigger value="auditoria" className={tabCls}>
+            <ScrollText className="w-4 h-4 mr-2" /> Auditoria
           </TabsTrigger>
         </TabsList>
 
@@ -259,6 +268,19 @@ export default function Config() {
             </CardHeader>
             <CardContent>
               <UsersManager />
+            </CardContent>
+          </Card>
+        </TabsContent>
+        <TabsContent value="auditoria">
+          <Card className="border-slate-200">
+            <CardHeader>
+              <CardTitle>Auditoria do Sistema</CardTitle>
+              <CardDescription>
+                Registro de todas as criações, atualizações e exclusões no sistema.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <AuditLogViewer />
             </CardContent>
           </Card>
         </TabsContent>

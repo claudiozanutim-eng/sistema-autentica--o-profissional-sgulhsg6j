@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-06-30T10:27:02.366Z",
+  "generatedAt": "2026-06-30T11:37:46.777Z",
   "collections": [
     {
       "name": "users",
@@ -37,6 +37,13 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "role",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["admin", "reader"]
         }
       ],
       "indexes": [
@@ -487,6 +494,63 @@
         }
       ],
       "indexes": ["CREATE INDEX idx_credit_cards_user ON credit_cards (user_id)"]
+    },
+    {
+      "name": "activity_logs",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": null,
+        "delete": null
+      },
+      "fields": [
+        {
+          "name": "user_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "action",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "resource",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "details",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_activity_logs_user ON activity_logs (user_id)",
+        "CREATE INDEX idx_activity_logs_created ON activity_logs (created DESC)",
+        "CREATE INDEX idx_activity_logs_resource ON activity_logs (resource)"
+      ]
     }
   ]
 }

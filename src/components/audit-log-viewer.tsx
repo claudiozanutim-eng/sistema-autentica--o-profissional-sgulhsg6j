@@ -1,0 +1,145 @@
+import { useEffect, useState } from 'react'
+import { getActivityLogs, type ActivityLog } from '@/services/activity-logs'
+import { useRealtime } from '@/hooks/use-realtime'
+import { Card, CardContent } from '@/components/ui/card'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Badge } from '@/components/ui/badge'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Search, Eye } from 'lucide-react'
+import { useToast } from '@/hooks/use-toast'
+import { getErrorMessage } from '@/lib/pocketbase/errors'
+
+const ACTION_COLORS: Record<string, string> = {
+  CREATE: 'bg-emerald-100 text-emerald-800 hover:bg-emerald-100',
+  UPDATE: 'bg-amber-100 text-amber-800 hover:bg-amber-100',
+  DELETE: 'bg-red-100 text-red-800 hover:bg-red-100',
+}
+
+export function AuditLogViewer() {
+  const [logs, setLogs] = useState<ActivityLog[]>([])
+  const [search, setSearch] = useState('')
+  const [startDate, setStartDate] = useState('')
+  const [endDate, setEndDate] = useState('')
+  const [selectedLog, setSelectedLog] = useState<ActivityLog | null>(null)
+  const { toast } = useToast()
+
+  const loadData = async () => {
+    try {
+      setLogs(
+        await getActivityLogs({
+          user_name: search || undefined,
+          start_date: startDate || undefined,
+          end_date: endDate || undefined,
+        }),
+      )
+    } catch (err) {
+      toast({ title: getErrorMessage(err), variant: 'destructive' })
+    }
+  }
+
+  useEffect(() => {
+    loadData()
+  }, [search, startDate, endDate])
+  useRealtime('activity_logs', () => loadData())
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap gap-3">
+        <div className="relative w-full max-w-xs">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+          <Input
+            placeholder="Buscar por usuário..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="pl-9 bg-slate-50"
+          />
+        </div>
+        <Input
+          type="date"
+          value={startDate}
+          onChange={(e) => setStartDate(e.target.value)}
+          className="w-40 bg-slate-50"
+        />
+        <Input
+          type="date"
+          value={endDate}
+          onChange={(e) => setEndDate(e.target.value)}
+          className="w-40 bg-slate-50"
+        />
+      </div>
+      <Card className="border-slate-200">
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader className="bg-slate-50">
+              <TableRow>
+                <TableHead>Data/Hora</TableHead>
+                <TableHead>Usuário</TableHead>
+                <TableHead>Ação</TableHead>
+                <TableHead>Recurso</TableHead>
+                <TableHead className="w-[80px]"></TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {logs.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={5} className="text-center py-8 text-slate-500">
+                    Nenhum registro encontrado.
+                  </TableCell>
+                </TableRow>
+              ) : (
+                logs.map((log) => (
+                  <TableRow key={log.id} className="hover:bg-slate-50">
+                    <TableCell className="text-slate-600">
+                      {new Date(log.created).toLocaleString('pt-BR')}
+                    </TableCell>
+                    <TableCell className="font-medium text-slate-900">
+                      {log.user_name || 'Sistema'}
+                    </TableCell>
+                    <TableCell>
+                      <Badge
+                        className={ACTION_COLORS[log.action] || 'bg-slate-100 text-slate-800'}
+                        variant="outline"
+                      >
+                        {log.action}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-slate-600">{log.resource}</TableCell>
+                    <TableCell>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => setSelectedLog(log)}
+                        className="h-8 w-8 text-slate-400 hover:text-blue-600"
+                      >
+                        <Eye className="w-4 h-4" />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+      <Dialog open={!!selectedLog} onOpenChange={() => setSelectedLog(null)}>
+        <DialogContent className="sm:max-w-[600px]">
+          <DialogHeader>
+            <DialogTitle>Detalhes do Registro</DialogTitle>
+          </DialogHeader>
+          <pre className="bg-slate-50 p-4 rounded-md text-xs overflow-auto max-h-[400px] font-mono">
+            {selectedLog ? JSON.stringify(selectedLog.details, null, 2) : ''}
+          </pre>
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}

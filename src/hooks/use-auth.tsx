@@ -5,6 +5,9 @@ import type { RecordModel } from 'pocketbase'
 interface AuthContextType {
   user: RecordModel | null
   isAuthenticated: boolean
+  userRole: string
+  isAdmin: boolean
+  canEdit: boolean
   signIn: (email: string, password: string) => Promise<{ error: any }>
   signOut: () => void
   loading: boolean
@@ -84,9 +87,24 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   }
 
+  const userRole = (user as any)?.role || 'admin'
+  const isAdmin = userRole === 'admin'
+  const canEdit = isAdmin
+
   return (
     <AuthContext.Provider
-      value={{ user, isAuthenticated, signIn, signOut, loading, updateProfile, updatePassword }}
+      value={{
+        user,
+        isAuthenticated,
+        userRole,
+        isAdmin,
+        canEdit,
+        signIn,
+        signOut,
+        loading,
+        updateProfile,
+        updatePassword,
+      }}
     >
       {children}
     </AuthContext.Provider>

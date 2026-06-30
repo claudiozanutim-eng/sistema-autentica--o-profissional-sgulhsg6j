@@ -58,7 +58,7 @@ export default function Lancamentos() {
   const [filterStatus, setFilterStatus] = useState('all')
   const [isOpen, setIsOpen] = useState(false)
   const [chartOfAccounts, setChartOfAccounts] = useState<ChartOfAccount[]>([])
-  const { user } = useAuth()
+  const { user, isAdmin } = useAuth()
   const { toast } = useToast()
   const { selectedYear } = useAppStore()
 
@@ -210,11 +210,13 @@ export default function Lancamentos() {
           <p className="text-slate-500 text-sm">Gestão detalhada de transações financeiras.</p>
         </div>
         <Dialog open={isOpen} onOpenChange={setIsOpen}>
-          <DialogTrigger asChild>
-            <Button className="bg-emerald-600 hover:bg-emerald-700">
-              <Plus className="w-4 h-4 mr-2" /> Novo Lançamento
-            </Button>
-          </DialogTrigger>
+          {isAdmin && (
+            <DialogTrigger asChild>
+              <Button className="bg-emerald-600 hover:bg-emerald-700">
+                <Plus className="w-4 h-4 mr-2" /> Novo Lançamento
+              </Button>
+            </DialogTrigger>
+          )}
           <DialogContent className="sm:max-w-[425px]">
             <DialogHeader>
               <DialogTitle>Novo Lançamento</DialogTitle>
@@ -503,14 +505,16 @@ export default function Lancamentos() {
                       {formatCurrency(t.amount)}
                     </TableCell>
                     <TableCell>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleDelete(t.id)}
-                        className="text-slate-400 hover:text-red-600 h-8 w-8"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
+                      {isAdmin && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleDelete(t.id)}
+                          className="text-slate-400 hover:text-red-600 h-8 w-8"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))

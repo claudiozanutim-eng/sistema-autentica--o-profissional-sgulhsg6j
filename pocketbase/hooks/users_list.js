@@ -9,6 +9,7 @@ routerAdd(
         name: r.getString('name'),
         email: r.getEmail(),
         avatar: r.getString('avatar'),
+        role: r.getString('role') || 'admin',
         created: r.getCreated().toISOString(),
       }))
       return e.json(200, users)

@@ -4,6 +4,14 @@ import { useRealtime } from '@/hooks/use-realtime'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Badge } from '@/components/ui/badge'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import {
   Table,
@@ -18,7 +26,7 @@ import { Plus, Pencil } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
 import { getErrorMessage } from '@/lib/pocketbase/errors'
 
-const EMPTY_FORM = { name: '', email: '' }
+const EMPTY_FORM = { name: '', email: '', role: 'admin' }
 
 export function UsersManager() {
   const [users, setUsers] = useState<UserRecord[]>([])
@@ -47,7 +55,7 @@ export function UsersManager() {
   }
 
   const openEdit = (u: UserRecord) => {
-    setForm({ name: u.name, email: u.email })
+    setForm({ name: u.name, email: u.email, role: u.role || 'admin' })
     setEditingId(u.id)
     setIsOpen(true)
   }
@@ -81,13 +89,14 @@ export function UsersManager() {
             <TableRow>
               <TableHead>Usuário</TableHead>
               <TableHead>E-mail</TableHead>
+              <TableHead>Função</TableHead>
               <TableHead className="w-[80px]"></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {users.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={3} className="text-center py-8 text-slate-500">
+                <TableCell colSpan={4} className="text-center py-8 text-slate-500">
                   Nenhum usuário cadastrado.
                 </TableCell>
               </TableRow>
@@ -106,6 +115,17 @@ export function UsersManager() {
                     </div>
                   </TableCell>
                   <TableCell className="text-slate-600">{u.email}</TableCell>
+                  <TableCell>
+                    <Badge
+                      className={
+                        u.role === 'reader'
+                          ? 'bg-slate-100 text-slate-700 hover:bg-slate-100'
+                          : 'bg-blue-100 text-blue-700 hover:bg-blue-100'
+                      }
+                    >
+                      {u.role === 'reader' ? 'Leitor' : 'Administrador'}
+                    </Badge>
+                  </TableCell>
                   <TableCell>
                     <Button
                       variant="ghost"
@@ -146,6 +166,18 @@ export function UsersManager() {
                 onChange={(e) => setForm({ ...form, email: e.target.value })}
                 placeholder="usuario@empresa.com"
               />
+            </div>
+            <div className="space-y-2">
+              <Label>Função</Label>
+              <Select value={form.role} onValueChange={(v) => setForm({ ...form, role: v })}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="admin">Administrador</SelectItem>
+                  <SelectItem value="reader">Leitor</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             {!editingId && (
               <p className="text-xs text-slate-500">
