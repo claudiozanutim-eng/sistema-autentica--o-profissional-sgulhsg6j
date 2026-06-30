@@ -35,11 +35,14 @@ export interface CategorizeResponse {
 }
 
 export interface PdfProcessResponse {
+  status: 'completed' | 'error'
+  error?: string
   transactions: CategorizeResult[]
   import_id: string
   matched_count: number
   unmatched_count: number
   auto_created_count?: number
+  duplicates_skipped?: number
 }
 
 export interface BatchCreateResult {
@@ -61,25 +64,24 @@ export const createImport = (data: FormData) => pb.collection<ImportRecord>('imp
 export const getImports = () =>
   pb.collection<ImportRecord>('imports').getFullList({ sort: '-created' })
 
-export const processPdf = (file: File, bankSource: string) =>
-  new Promise<PdfProcessResponse>((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => {
-      const base64 = (reader.result as string).split(',')[1]
-      pb.send<PdfProcessResponse>('/backend/v1/imports/pdf-process', {
-        method: 'POST',
-        body: JSON.stringify({
-          file_data: base64,
-          file_name: file.name,
-          bank_source: bankSource,
-        }),
-        headers: { 'Content-Type': 'application/json' },
-      })
-        .then(resolve)
-        .catch(reject)
-    }
-    reader.onerror = () => reject(new Error('Falha ao ler arquivo'))
-    reader.readAsDataURL(file)
+export const processPdf = (file: File, bankSource: string) => {
+  const formData = new FormData()
+  formData.append('file', file)
+  formData.append('bank_source', bankSource)
+  return pb.send<PdfProcessResponse>('/backend/v1/import-pdf', {
+    method: 'POST',
+    body: formData,
+  })
+}
+
+export const updateImportStatus = (
+  id: string,
+  status: 'processing' | 'completed' | 'error',
+  errorMessage?: string,
+) =>
+  pb.collection<ImportRecord>('imports').update(id, {
+    status,
+    error_message: errorMessage || '',
   })
 
 export const batchCreateTransactions = (transactions: Record<string, any>[]) =>

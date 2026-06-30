@@ -29,6 +29,7 @@ import {
 } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
 import { useAuth } from '@/hooks/use-auth'
+import { useRealtime } from '@/hooks/use-realtime'
 import {
   categorizeTransactions,
   processPdf,
@@ -61,6 +62,7 @@ export default function Importar() {
   const [autoCreatedCount, setAutoCreatedCount] = useState(0)
   const [destinations, setDestinations] = useState<DestinationItem[]>([])
   const [selectedDestinationId, setSelectedDestinationId] = useState<string>('')
+  const [currentImportId, setCurrentImportId] = useState<string>('')
   const fileRef = useRef<HTMLInputElement>(null)
   const { toast } = useToast()
   const { user } = useAuth()
@@ -96,6 +98,21 @@ export default function Importar() {
   }, [])
 
   const selectedDestination = destinations.find((d) => d.id === selectedDestinationId) || null
+
+  useRealtime('imports', (e) => {
+    if (e.action === 'update' && e.record.id === currentImportId) {
+      const status = (e.record as any).status
+      if (status === 'completed') {
+        toast({ title: 'Importação processada com sucesso!' })
+      } else if (status === 'error') {
+        toast({
+          title: 'Erro no processamento',
+          description: (e.record as any).error_message || 'Falha ao processar o arquivo.',
+          variant: 'destructive',
+        })
+      }
+    }
+  })
 
   const handleDrag = (e: React.DragEvent) => {
     e.preventDefault()
@@ -137,8 +154,19 @@ export default function Importar() {
         setProgress(30)
         setProgressLabel('Extraindo texto do PDF...')
         const response = await processPdf(file, selectedDestination.bank)
+        if (
+          response.status === 'error' ||
+          !response.transactions ||
+          response.transactions.length === 0
+        ) {
+          throw new Error(
+            response.error ||
+              'Nenhuma transação encontrada no PDF. O arquivo pode estar compactado ou digitalizado. Tente exportar como CSV.',
+          )
+        }
+        setCurrentImportId(response.import_id || '')
         setProgress(75)
-        setProgressLabel('Categorização local concluída!')
+        setProgressLabel('Categorização concluída!')
         setResults(response.transactions)
         setMatchedCount(response.matched_count || 0)
         setUnmatchedCount(response.unmatched_count || 0)
@@ -166,10 +194,17 @@ export default function Importar() {
       }
       setProgress(100)
       setTimeout(() => setStep(3), 300)
-    } catch (e: any) {
+    } catch (err: any) {
+      const errorDesc = err?.response?.error || err?.message || 'Erro desconhecido'
+      const isNotFound =
+        err?.status === 404 ||
+        errorDesc.toLowerCase().includes('not found') ||
+        errorDesc.toLowerCase().includes('não encontrado')
       toast({
-        title: 'Erro ao processar arquivo',
-        description: e?.response?.error || e?.message || undefined,
+        title: isNotFound ? 'Endpoint não encontrado' : 'Erro ao processar arquivo',
+        description: isNotFound
+          ? 'O serviço de processamento não está disponível. Verifique sua conexão e tente novamente.'
+          : errorDesc,
         variant: 'destructive',
       })
       setStep(1)
@@ -205,6 +240,7 @@ export default function Importar() {
           group: r.group,
           status: 'paid',
           user_id: user.id,
+          source: `PDF Import - ${selectedDestination.name}`,
         }
         if (selectedDestination.type === 'credit_card') {
           baseData.credit_card_id = selectedDestination.id
@@ -245,6 +281,7 @@ export default function Importar() {
       setMatchedCount(0)
       setUnmatchedCount(0)
       setAutoCreatedCount(0)
+      setCurrentImportId('')
     } catch (e: any) {
       toast({
         title: 'Erro ao salvar',
@@ -458,6 +495,7 @@ export default function Importar() {
                     setMatchedCount(0)
                     setUnmatchedCount(0)
                     setAutoCreatedCount(0)
+                    setCurrentImportId('')
                   }}
                 >
                   Cancelar
