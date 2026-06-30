@@ -22,14 +22,28 @@ routerAdd(
     var accountId = body.account_id || ''
     var creditCardId = body.credit_card_id || ''
 
-    var importsCol = $app.findCollectionByNameOrId('imports')
-    var importRecord = new Record(importsCol)
-    importRecord.set('file', $filesystem.fileFromBytes(fileBytes, fileName))
-    importRecord.set('file_type', 'pdf')
-    importRecord.set('bank_source', bankSource)
-    importRecord.set('status', 'processing')
-    $app.save(importRecord)
-    var importId = importRecord.id
+    var importId = body.import_id || ''
+    if (importId) {
+      try {
+        var existingImport = $app.findRecordById('imports', importId)
+        existingImport.set('file', $filesystem.fileFromBytes(fileBytes, fileName))
+        existingImport.set('file_type', 'pdf')
+        existingImport.set('bank_source', bankSource)
+        existingImport.set('status', 'processing')
+        $app.save(existingImport)
+      } catch (_) {
+        return e.badRequestError('Invalid import_id')
+      }
+    } else {
+      var importsCol = $app.findCollectionByNameOrId('imports')
+      var importRecord = new Record(importsCol)
+      importRecord.set('file', $filesystem.fileFromBytes(fileBytes, fileName))
+      importRecord.set('file_type', 'pdf')
+      importRecord.set('bank_source', bankSource)
+      importRecord.set('status', 'processing')
+      $app.save(importRecord)
+      importId = importRecord.id
+    }
 
     function inflateRaw(data) {
       var rf = new Inflate()
@@ -223,6 +237,19 @@ routerAdd(
       } catch (_) {}
     }
 
+    function updateImportProgress(stage, extra) {
+      try {
+        var r = $app.findRecordById('imports', importId)
+        var info = { stage: stage, timestamp: new Date().toISOString() }
+        if (extra) {
+          var keys = Object.keys(extra)
+          for (var k = 0; k < keys.length; k++) info[keys[k]] = extra[keys[k]]
+        }
+        r.set('transactions_json', JSON.stringify(info))
+        $app.save(r)
+      } catch (_) {}
+    }
+
     function unescapePdf(s) {
       return s
         .replace(/\\n/g, '\n')
@@ -310,6 +337,8 @@ routerAdd(
         })
       }
 
+      updateImportProgress('text_extracted', { chars: pdfText.length })
+
       var aiResult = $ai.chat({
         model: 'fast',
         messages: [
@@ -360,6 +389,8 @@ routerAdd(
           duplicates_skipped: 0,
         })
       }
+
+      updateImportProgress('ai_parsed', { count: transactions.length })
 
       var coaRecords = $app.findRecordsByFilter(
         'chart_of_accounts',
@@ -482,6 +513,8 @@ routerAdd(
         return a.index - b.index
       })
 
+      updateImportProgress('categorized', { matched: matched.length, unmatched: unmatched.length })
+
       var coaCol = $app.findCollectionByNameOrId('chart_of_accounts')
       var uniqueCombos = {}
       all.forEach(function (t) {
@@ -542,6 +575,9 @@ routerAdd(
       var txCol = $app.findCollectionByNameOrId('transactions')
       var createdCount = 0,
         createErrors = []
+
+      updateImportProgress('saving', { count: nonDupes.length })
+
       nonDupes.forEach(function (t, i) {
         t.index = i
         try {
@@ -588,11 +624,25 @@ routerAdd(
         errors: createErrors,
       })
     } catch (err) {
-      updateImport('error', err.message || 'Processing failed')
-      if (err instanceof SkipAiError || err instanceof SkipAiConfigError) {
+      var errMsg = err.message || 'Processing failed'
+      updateImport('error', errMsg)
+      if (err instanceof SkipAiConfigError) {
         return e.json(503, {
           status: 'error',
-          error: 'AI temporarily unavailable',
+          error: 'Serviço de IA não configurado. Contate o suporte técnico.',
+          import_id: importId,
+          transactions: [],
+          matched_count: 0,
+          unmatched_count: 0,
+          auto_created_count: 0,
+          created_count: 0,
+          duplicates_skipped: 0,
+        })
+      }
+      if (err instanceof SkipAiError) {
+        return e.json(503, {
+          status: 'error',
+          error: 'Serviço de IA temporariamente indisponível. Tente novamente em alguns instantes.',
           import_id: importId,
           transactions: [],
           matched_count: 0,

@@ -36,8 +36,11 @@ import {
   categorizeTransactions,
   processPdf,
   batchCreateTransactions,
+  createImportRecord,
+  updateImportStatus,
   type CategorizeResult,
 } from '@/services/imports'
+import { getErrorMessage } from '@/lib/pocketbase/errors'
 import { getAccounts } from '@/services/accounts'
 import { getCreditCards } from '@/services/credit-cards'
 import { prepareTransactionData, formatCurrency } from '@/lib/finance-utils'
@@ -66,9 +69,11 @@ export default function Importar() {
   const [selectedDestinationId, setSelectedDestinationId] = useState<string>('')
   const [currentImportId, setCurrentImportId] = useState<string>('')
   const [isPdfImport, setIsPdfImport] = useState(false)
+  const [importStatus, setImportStatus] = useState<string>('')
   const [createdCount, setCreatedCount] = useState(0)
   const [duplicatesSkipped, setDuplicatesSkipped] = useState(0)
   const fileRef = useRef<HTMLInputElement>(null)
+  const pdfImportIdRef = useRef<string>('')
   const { toast } = useToast()
   const { user } = useAuth()
 
@@ -107,7 +112,10 @@ export default function Importar() {
   useRealtime('imports', (e) => {
     if (e.action === 'update' && e.record.id === currentImportId) {
       const status = (e.record as any).status
+      setImportStatus(status)
       if (status === 'completed') {
+        setProgressLabel('Importação concluída com sucesso!')
+        setProgress(100)
         toast({ title: 'Importação processada com sucesso!' })
       } else if (status === 'error') {
         toast({
@@ -115,6 +123,25 @@ export default function Importar() {
           description: (e.record as any).error_message || 'Falha ao processar o arquivo.',
           variant: 'destructive',
         })
+      } else if (status === 'processing') {
+        try {
+          const progressInfo = JSON.parse((e.record as any).transactions_json || '{}')
+          if (progressInfo.stage === 'text_extracted') {
+            setProgress(40)
+            setProgressLabel('Texto extraído do PDF. Analisando com IA...')
+          } else if (progressInfo.stage === 'ai_parsed') {
+            setProgress(60)
+            setProgressLabel(`${progressInfo.count || 0} transações encontradas. Categorizando...`)
+          } else if (progressInfo.stage === 'categorized') {
+            setProgress(80)
+            setProgressLabel('Categorização concluída. Salvando transações...')
+          } else if (progressInfo.stage === 'saving') {
+            setProgress(90)
+            setProgressLabel(`Salvando ${progressInfo.count || 0} transações no banco...`)
+          }
+        } catch {
+          /* intentionally ignored */
+        }
       }
     }
   })
@@ -131,6 +158,8 @@ export default function Importar() {
     setCreatedCount(0)
     setDuplicatesSkipped(0)
     setIsPdfImport(false)
+    setImportStatus('')
+    pdfImportIdRef.current = ''
   }
 
   const handleDrag = (e: React.DragEvent) => {
@@ -171,12 +200,28 @@ export default function Importar() {
     try {
       if (file.name.toLowerCase().endsWith('.pdf')) {
         setIsPdfImport(true)
-        setProgress(30)
-        setProgressLabel('Extraindo texto do PDF e criando transações...')
+        setProgress(15)
+        setProgressLabel('Criando registro de importação...')
         const accountId = selectedDestination.type === 'account' ? selectedDestination.id : ''
         const creditCardId =
           selectedDestination.type === 'credit_card' ? selectedDestination.id : ''
-        const response = await processPdf(file, selectedDestination.bank, accountId, creditCardId)
+        const importRecord = await createImportRecord({
+          file_type: 'pdf',
+          bank_source: selectedDestination.bank,
+          status: 'processing',
+        })
+        setCurrentImportId(importRecord.id)
+        pdfImportIdRef.current = importRecord.id
+        setImportStatus('processing')
+        setProgress(30)
+        setProgressLabel('Extraindo texto do PDF e processando com IA...')
+        const response = await processPdf(
+          file,
+          selectedDestination.bank,
+          accountId,
+          creditCardId,
+          importRecord.id,
+        )
         if (
           response.status === 'error' ||
           !response.transactions ||
@@ -218,18 +263,29 @@ export default function Importar() {
       setProgress(100)
       setTimeout(() => setStep(3), 300)
     } catch (err: any) {
-      const errorDesc = err?.response?.error || err?.message || 'Erro desconhecido'
-      const isNotFound = err?.status === 404 || errorDesc.toLowerCase().includes('not found')
-      const isServerError = err?.status === 503 || err?.status === 500
+      let errorDesc = getErrorMessage(err)
+      if (err?.response?.error) errorDesc = err.response.error
+      if (pdfImportIdRef.current) {
+        updateImportStatus(pdfImportIdRef.current, 'error', errorDesc).catch(() => {})
+        pdfImportIdRef.current = ''
+      }
+      const statusCode = err?.status || 0
+      const isNotFound = statusCode === 404
+      const isServerError = statusCode >= 500
+      const isAuthError = statusCode === 401
       toast({
-        title: isServerError
-          ? 'Algo deu errado'
+        title: isAuthError
+          ? 'Falha de autenticação'
+          : isServerError
+            ? 'Erro no servidor'
+            : isNotFound
+              ? 'Endpoint não encontrado'
+              : 'Erro ao processar arquivo',
+        description: isAuthError
+          ? 'Sua sessão expirou. Faça login novamente.'
           : isNotFound
-            ? 'Endpoint não encontrado'
-            : 'Erro ao processar arquivo',
-        description: isNotFound
-          ? 'O serviço de processamento não está disponível. Verifique sua conexão e tente novamente.'
-          : errorDesc,
+            ? `Serviço indisponível (${statusCode}). ${errorDesc}`
+            : errorDesc,
         variant: 'destructive',
       })
       resetState()
@@ -388,6 +444,18 @@ export default function Importar() {
         {(step === 2 || isProcessing) && (
           <CardContent className="p-12 text-center">
             <div className="flex flex-col items-center gap-4">
+              {importStatus === 'processing' && (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-blue-50 text-blue-700">
+                  <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
+                  Processando no servidor
+                </span>
+              )}
+              {importStatus === 'error' && (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-red-50 text-red-700">
+                  <AlertCircle className="w-3 h-3" />
+                  Erro no processamento
+                </span>
+              )}
               <Loader2 className="w-12 h-12 text-emerald-600 animate-spin" />
               <h3 className="text-lg font-semibold text-slate-900">
                 {progressLabel || 'Processando...'}

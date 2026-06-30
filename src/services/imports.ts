@@ -66,17 +66,22 @@ export const createImport = (data: FormData) => pb.collection<ImportRecord>('imp
 export const getImports = () =>
   pb.collection<ImportRecord>('imports').getFullList({ sort: '-created' })
 
+export const createImportRecord = (data: Partial<ImportRecord>) =>
+  pb.collection<ImportRecord>('imports').create(data)
+
 export const processPdf = (
   file: File,
   bankSource: string,
   accountId?: string,
   creditCardId?: string,
+  importId?: string,
 ) => {
   const formData = new FormData()
   formData.append('file', file)
   formData.append('bank_source', bankSource)
   if (accountId) formData.append('account_id', accountId)
   if (creditCardId) formData.append('credit_card_id', creditCardId)
+  if (importId) formData.append('import_id', importId)
   return pb.send<PdfProcessResponse>('/backend/v1/import-pdf', {
     method: 'POST',
     body: formData,
