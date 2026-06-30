@@ -17,6 +17,7 @@ export interface Transaction extends RecordModel {
   created_by: string
   origin: 'manual' | 'import'
   credit_card_id?: string
+  import_id?: string
   expand?: {
     user_id: RecordModel
     account_id: RecordModel

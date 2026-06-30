@@ -80,6 +80,7 @@ routerAdd(
           if (tx.source) record.set('source', tx.source)
           if (tx.account_id) record.set('account_id', tx.account_id)
           if (tx.credit_card_id) record.set('credit_card_id', tx.credit_card_id)
+          if (tx.import_id) record.set('import_id', tx.import_id)
           txApp.save(record)
           created.push({ index: i, id: record.id, success: true })
         } catch (err) {

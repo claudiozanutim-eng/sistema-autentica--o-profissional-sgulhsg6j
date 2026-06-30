@@ -8,6 +8,7 @@ export interface ImportRecord extends RecordModel {
   status: 'processing' | 'completed' | 'error'
   transactions_json: string
   error_message: string
+  user_id: string
 }
 
 export interface CategorizeRow {
@@ -92,10 +93,12 @@ export const updateImportStatus = (
   id: string,
   status: 'processing' | 'completed' | 'error',
   errorMessage?: string,
+  transactionsJson?: string,
 ) =>
   pb.collection<ImportRecord>('imports').update(id, {
     status,
     error_message: errorMessage || '',
+    ...(transactionsJson ? { transactions_json: transactionsJson } : {}),
   })
 
 export const batchCreateTransactions = (transactions: Record<string, any>[]) =>

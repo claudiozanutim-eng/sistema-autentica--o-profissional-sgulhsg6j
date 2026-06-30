@@ -41,6 +41,7 @@ routerAdd(
       importRecord.set('file_type', 'pdf')
       importRecord.set('bank_source', bankSource)
       importRecord.set('status', 'processing')
+      importRecord.set('user_id', userId)
       $app.save(importRecord)
       importId = importRecord.id
     }
@@ -319,6 +320,25 @@ routerAdd(
     }
 
     try {
+      var headerStr = ''
+      for (var hi = 0; hi < Math.min(fileBytes.length, 50000); hi++)
+        headerStr += String.fromCharCode(fileBytes[hi])
+      if (headerStr.indexOf('/Encrypt') !== -1) {
+        updateImport('error', 'PDF is encrypted or password-protected')
+        return e.json(200, {
+          status: 'error',
+          error:
+            'O PDF está protegido por senha ou criptografado. Remova a proteção e tente novamente, ou converta para CSV.',
+          import_id: importId,
+          transactions: [],
+          matched_count: 0,
+          unmatched_count: 0,
+          auto_created_count: 0,
+          created_count: 0,
+          duplicates_skipped: 0,
+        })
+      }
+
       var pdfText = extractPdfText(fileBytes)
 
       if (pdfText.length < 50) {
@@ -598,6 +618,7 @@ routerAdd(
           rec.set('month_year', (dp[0] || '') + '-' + (dp[1] || '01'))
           if (accountId) rec.set('account_id', accountId)
           if (creditCardId) rec.set('credit_card_id', creditCardId)
+          rec.set('import_id', importId)
           $app.save(rec)
           createdCount++
         } catch (err) {
@@ -652,7 +673,17 @@ routerAdd(
           duplicates_skipped: 0,
         })
       }
-      throw err
+      return e.json(500, {
+        status: 'error',
+        error: 'Erro inesperado ao processar o PDF. Tente novamente ou converta para CSV.',
+        import_id: importId,
+        transactions: [],
+        matched_count: 0,
+        unmatched_count: 0,
+        auto_created_count: 0,
+        created_count: 0,
+        duplicates_skipped: 0,
+      })
     }
   },
   $apis.requireAuth(),

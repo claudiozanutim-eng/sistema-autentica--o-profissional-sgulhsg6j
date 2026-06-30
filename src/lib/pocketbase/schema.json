@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-06-30T20:32:22.457Z",
+  "generatedAt": "2026-06-30T21:00:14.935Z",
   "collections": [
     {
       "name": "users",
@@ -29,29 +29,21 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate"
-          ]
+          "autodateTriggers": ["onCreate"]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate",
-            "onUpdate"
-          ]
+          "autodateTriggers": ["onCreate", "onUpdate"]
         },
         {
           "name": "role",
           "type": "select",
           "required": false,
           "system": false,
-          "selectValues": [
-            "admin",
-            "reader"
-          ]
+          "selectValues": ["admin", "reader"]
         }
       ],
       "indexes": [
@@ -87,10 +79,7 @@
           "type": "select",
           "required": true,
           "system": false,
-          "selectValues": [
-            "income",
-            "expense"
-          ]
+          "selectValues": ["income", "expense"]
         },
         {
           "name": "date",
@@ -109,11 +98,7 @@
           "type": "select",
           "required": true,
           "system": false,
-          "selectValues": [
-            "paid",
-            "pending",
-            "overdue"
-          ]
+          "selectValues": ["paid", "pending", "overdue"]
         },
         {
           "name": "user_id",
@@ -127,19 +112,14 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate"
-          ]
+          "autodateTriggers": ["onCreate"]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate",
-            "onUpdate"
-          ]
+          "autodateTriggers": ["onCreate", "onUpdate"]
         },
         {
           "name": "account_id",
@@ -184,10 +164,7 @@
           "type": "select",
           "required": false,
           "system": false,
-          "selectValues": [
-            "manual",
-            "import"
-          ]
+          "selectValues": ["manual", "import"]
         },
         {
           "name": "credit_card_id",
@@ -195,6 +172,13 @@
           "required": false,
           "system": false,
           "collectionRef": "credit_cards"
+        },
+        {
+          "name": "import_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "imports"
         }
       ],
       "indexes": [
@@ -204,7 +188,8 @@
         "CREATE INDEX `idx_transactions_category` ON `transactions` (category)",
         "CREATE INDEX `idx_transactions_group_category` ON `transactions` (group,category)",
         "CREATE INDEX `idx_transactions_type_date` ON `transactions` (type,date)",
-        "CREATE INDEX `idx_transactions_year_month` ON `transactions` (year,month_year)"
+        "CREATE INDEX `idx_transactions_year_month` ON `transactions` (year,month_year)",
+        "CREATE INDEX `idx_transactions_import` ON `transactions` (import_id)"
       ]
     },
     {
@@ -235,10 +220,7 @@
           "type": "select",
           "required": true,
           "system": false,
-          "selectValues": [
-            "income",
-            "expense"
-          ]
+          "selectValues": ["income", "expense"]
         },
         {
           "name": "ocr_terms",
@@ -263,19 +245,14 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate"
-          ]
+          "autodateTriggers": ["onCreate"]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate",
-            "onUpdate"
-          ]
+          "autodateTriggers": ["onCreate", "onUpdate"]
         }
       ],
       "indexes": [
@@ -331,19 +308,14 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate"
-          ]
+          "autodateTriggers": ["onCreate"]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate",
-            "onUpdate"
-          ]
+          "autodateTriggers": ["onCreate", "onUpdate"]
         }
       ],
       "indexes": []
@@ -352,11 +324,11 @@
       "name": "imports",
       "type": "base",
       "apiRules": {
-        "list": "@request.auth.id != ''",
-        "view": "@request.auth.id != ''",
+        "list": "@request.auth.id != '' && user_id = @request.auth.id",
+        "view": "@request.auth.id != '' && user_id = @request.auth.id",
         "create": "@request.auth.id != ''",
-        "update": "@request.auth.id != ''",
-        "delete": "@request.auth.id != ''"
+        "update": "@request.auth.id != '' && user_id = @request.auth.id",
+        "delete": "@request.auth.id != '' && user_id = @request.auth.id"
       },
       "fields": [
         {
@@ -382,11 +354,7 @@
           "type": "select",
           "required": true,
           "system": false,
-          "selectValues": [
-            "processing",
-            "completed",
-            "error"
-          ]
+          "selectValues": ["processing", "completed", "error"]
         },
         {
           "name": "transactions_json",
@@ -405,23 +373,26 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate"
-          ]
+          "autodateTriggers": ["onCreate"]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate",
-            "onUpdate"
-          ]
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "user_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
         }
       ],
       "indexes": [
-        "CREATE INDEX `idx_imports_status` ON `imports` (status)"
+        "CREATE INDEX `idx_imports_status` ON `imports` (status)",
+        "CREATE INDEX `idx_imports_user` ON `imports` (user_id)"
       ]
     },
     {
@@ -465,24 +436,17 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate"
-          ]
+          "autodateTriggers": ["onCreate"]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate",
-            "onUpdate"
-          ]
+          "autodateTriggers": ["onCreate", "onUpdate"]
         }
       ],
-      "indexes": [
-        "CREATE INDEX idx_agente_conversas_user ON agente_conversas (user_id)"
-      ]
+      "indexes": ["CREATE INDEX idx_agente_conversas_user ON agente_conversas (user_id)"]
     },
     {
       "name": "credit_cards",
@@ -537,24 +501,17 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate"
-          ]
+          "autodateTriggers": ["onCreate"]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate",
-            "onUpdate"
-          ]
+          "autodateTriggers": ["onCreate", "onUpdate"]
         }
       ],
-      "indexes": [
-        "CREATE INDEX idx_credit_cards_user ON credit_cards (user_id)"
-      ]
+      "indexes": ["CREATE INDEX idx_credit_cards_user ON credit_cards (user_id)"]
     },
     {
       "name": "activity_logs",
@@ -597,19 +554,14 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate"
-          ]
+          "autodateTriggers": ["onCreate"]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate",
-            "onUpdate"
-          ]
+          "autodateTriggers": ["onCreate", "onUpdate"]
         }
       ],
       "indexes": [

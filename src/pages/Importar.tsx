@@ -54,6 +54,19 @@ interface DestinationItem {
   type: 'account' | 'credit_card'
 }
 
+function getErrorSuggestion(error: string): string {
+  const lower = error.toLowerCase()
+  if (lower.includes('criptograf') || lower.includes('encrypt') || lower.includes('senha'))
+    return 'Remova a proteção do PDF ou use o formato CSV.'
+  if (lower.includes('digitalizado') || lower.includes('imagem'))
+    return 'Use um PDF com texto selecionável ou exporte como CSV.'
+  if (lower.includes('nenhuma transação'))
+    return 'Verifique se o arquivo é um extrato bancário válido.'
+  if (lower.includes('ia') || lower.includes('ai') || lower.includes('indispon'))
+    return 'Tente novamente em alguns instantes ou use o formato CSV.'
+  return ''
+}
+
 export default function Importar() {
   const [step, setStep] = useState(1)
   const [isDragging, setIsDragging] = useState(false)
@@ -73,7 +86,7 @@ export default function Importar() {
   const [createdCount, setCreatedCount] = useState(0)
   const [duplicatesSkipped, setDuplicatesSkipped] = useState(0)
   const fileRef = useRef<HTMLInputElement>(null)
-  const pdfImportIdRef = useRef<string>('')
+  const importIdRef = useRef<string>('')
   const { toast } = useToast()
   const { user } = useAuth()
 
@@ -116,13 +129,8 @@ export default function Importar() {
       if (status === 'completed') {
         setProgressLabel('Importação concluída com sucesso!')
         setProgress(100)
-        toast({ title: 'Importação processada com sucesso!' })
       } else if (status === 'error') {
-        toast({
-          title: 'Erro no processamento',
-          description: (e.record as any).error_message || 'Falha ao processar o arquivo.',
-          variant: 'destructive',
-        })
+        setProgressLabel('Erro no processamento...')
       } else if (status === 'processing') {
         try {
           const progressInfo = JSON.parse((e.record as any).transactions_json || '{}')
@@ -159,7 +167,7 @@ export default function Importar() {
     setDuplicatesSkipped(0)
     setIsPdfImport(false)
     setImportStatus('')
-    pdfImportIdRef.current = ''
+    importIdRef.current = ''
   }
 
   const handleDrag = (e: React.DragEvent) => {
@@ -192,6 +200,10 @@ export default function Importar() {
       toast({ title: 'Selecione uma conta ou cartão', variant: 'destructive' })
       return
     }
+    if (!user) {
+      toast({ title: 'Usuário não autenticado', variant: 'destructive' })
+      return
+    }
     setIsProcessing(true)
     setStep(2)
     setProgress(15)
@@ -209,9 +221,10 @@ export default function Importar() {
           file_type: 'pdf',
           bank_source: selectedDestination.bank,
           status: 'processing',
+          user_id: user.id,
         })
         setCurrentImportId(importRecord.id)
-        pdfImportIdRef.current = importRecord.id
+        importIdRef.current = importRecord.id
         setImportStatus('processing')
         setProgress(30)
         setProgressLabel('Extraindo texto do PDF e processando com IA...')
@@ -240,6 +253,14 @@ export default function Importar() {
         setDuplicatesSkipped(response.duplicates_skipped || 0)
       } else {
         setIsPdfImport(false)
+        const csvImportRecord = await createImportRecord({
+          file_type: 'csv',
+          bank_source: selectedDestination.bank,
+          status: 'processing',
+          user_id: user.id,
+        })
+        setCurrentImportId(csvImportRecord.id)
+        importIdRef.current = csvImportRecord.id
         setProgress(25)
         setProgressLabel('Lendo arquivo CSV...')
         const text = await file.text()
@@ -265,14 +286,15 @@ export default function Importar() {
     } catch (err: any) {
       let errorDesc = getErrorMessage(err)
       if (err?.response?.error) errorDesc = err.response.error
-      if (pdfImportIdRef.current) {
-        updateImportStatus(pdfImportIdRef.current, 'error', errorDesc).catch(() => {})
-        pdfImportIdRef.current = ''
+      if (importIdRef.current) {
+        updateImportStatus(importIdRef.current, 'error', errorDesc).catch(() => {})
+        importIdRef.current = ''
       }
       const statusCode = err?.status || 0
       const isNotFound = statusCode === 404
       const isServerError = statusCode >= 500
       const isAuthError = statusCode === 401
+      const suggestion = getErrorSuggestion(errorDesc)
       toast({
         title: isAuthError
           ? 'Falha de autenticação'
@@ -285,7 +307,9 @@ export default function Importar() {
           ? 'Sua sessão expirou. Faça login novamente.'
           : isNotFound
             ? `Serviço indisponível (${statusCode}). ${errorDesc}`
-            : errorDesc,
+            : suggestion
+              ? `${errorDesc} ${suggestion}`
+              : errorDesc,
         variant: 'destructive',
       })
       resetState()
@@ -319,6 +343,7 @@ export default function Importar() {
           status: 'paid',
           user_id: user.id,
           source: `CSV Import - ${selectedDestination.name}`,
+          import_id: importIdRef.current || undefined,
         }
         if (selectedDestination.type === 'credit_card')
           baseData.credit_card_id = selectedDestination.id
@@ -337,9 +362,20 @@ export default function Importar() {
       if (allErrors.length > 0 && totalCreated === 0) {
         throw new Error(allErrors[0]?.error || 'Falha ao criar transações')
       }
+      if (importIdRef.current) {
+        await updateImportStatus(
+          importIdRef.current,
+          'completed',
+          undefined,
+          JSON.stringify(results),
+        )
+      }
       toast({ title: `${totalCreated} transações importadas!` })
       resetState()
     } catch (e: any) {
+      if (importIdRef.current) {
+        updateImportStatus(importIdRef.current, 'error', e?.message).catch(() => {})
+      }
       toast({ title: 'Erro ao salvar', description: e?.message, variant: 'destructive' })
     }
     setIsSaving(false)
