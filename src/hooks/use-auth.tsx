@@ -8,6 +8,8 @@ interface AuthContextType {
   signIn: (email: string, password: string) => Promise<{ error: any }>
   signOut: () => void
   loading: boolean
+  updateProfile: (data: { name?: string; avatar?: File }) => Promise<{ error: any }>
+  updatePassword: (password: string, passwordConfirm: string) => Promise<{ error: any }>
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -58,8 +60,34 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     pb.authStore.clear()
   }
 
+  const updateProfile = async (data: { name?: string; avatar?: File }) => {
+    if (!user) return { error: new Error('Não autenticado') }
+    try {
+      const updateData: Record<string, any> = {}
+      if (data.name !== undefined) updateData.name = data.name
+      if (data.avatar) updateData.avatar = data.avatar
+      const updated = await pb.collection('users').update(user.id, updateData)
+      setUser(updated)
+      return { error: null }
+    } catch (error) {
+      return { error }
+    }
+  }
+
+  const updatePassword = async (password: string, passwordConfirm: string) => {
+    if (!user) return { error: new Error('Não autenticado') }
+    try {
+      await pb.collection('users').update(user.id, { password, passwordConfirm })
+      return { error: null }
+    } catch (error) {
+      return { error }
+    }
+  }
+
   return (
-    <AuthContext.Provider value={{ user, isAuthenticated, signIn, signOut, loading }}>
+    <AuthContext.Provider
+      value={{ user, isAuthenticated, signIn, signOut, loading, updateProfile, updatePassword }}
+    >
       {children}
     </AuthContext.Provider>
   )

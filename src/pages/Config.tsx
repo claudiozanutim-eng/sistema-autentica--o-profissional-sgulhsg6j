@@ -1,3 +1,4 @@
+import { useState, useRef } from 'react'
 import { useAuth } from '@/hooks/use-auth'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
@@ -5,19 +6,70 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Switch } from '@/components/ui/switch'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { useToast } from '@/hooks/use-toast'
-import { User, Lock, Settings, Wallet, CreditCard } from 'lucide-react'
+import { User, Lock, Settings, Wallet, CreditCard, Users, Camera } from 'lucide-react'
 import { AccountsManager } from '@/components/accounts-manager'
 import { CreditCardsManager } from '@/components/credit-cards-manager'
+import { UsersManager } from '@/components/users-manager'
+import { getAvatarUrl } from '@/services/users'
+import { getErrorMessage } from '@/lib/pocketbase/errors'
 
 export default function Config() {
-  const { user } = useAuth()
+  const { user, updateProfile, updatePassword } = useAuth()
   const { toast } = useToast()
+  const fileRef = useRef<HTMLInputElement>(null)
+  const [name, setName] = useState(user?.name || '')
+  const [avatarFile, setAvatarFile] = useState<File | null>(null)
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null)
+  const [newPass, setNewPass] = useState('')
+  const [confirmPass, setConfirmPass] = useState('')
 
-  const handleSave = (e: React.FormEvent) => {
-    e.preventDefault()
-    toast({ title: 'Configurações atualizadas com sucesso.' })
+  const avatarUrl = user?.avatar
+    ? getAvatarUrl({ id: user.id, avatar: user.avatar as string })
+    : null
+
+  const onAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0]
+    if (!f) return
+    setAvatarFile(f)
+    setAvatarPreview(URL.createObjectURL(f))
   }
+
+  const saveProfile = async (e: React.FormEvent) => {
+    e.preventDefault()
+    const { error } = await updateProfile({ name, avatar: avatarFile || undefined })
+    if (error) {
+      toast({ title: getErrorMessage(error), variant: 'destructive' })
+      return
+    }
+    setAvatarFile(null)
+    setAvatarPreview(null)
+    toast({ title: 'Perfil atualizado com sucesso.' })
+  }
+
+  const savePassword = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (newPass.length < 8) {
+      toast({ title: 'A senha deve ter no mínimo 8 caracteres.', variant: 'destructive' })
+      return
+    }
+    if (newPass !== confirmPass) {
+      toast({ title: 'As senhas não conferem.', variant: 'destructive' })
+      return
+    }
+    const { error } = await updatePassword(newPass, confirmPass)
+    if (error) {
+      toast({ title: getErrorMessage(error), variant: 'destructive' })
+      return
+    }
+    setNewPass('')
+    setConfirmPass('')
+    toast({ title: 'Senha atualizada com sucesso.' })
+  }
+
+  const tabCls = 'data-[state=active]:bg-white data-[state=active]:text-blue-600'
+  const btnCls = 'bg-blue-600 hover:bg-blue-700'
 
   return (
     <div className="space-y-6 max-w-4xl">
@@ -27,35 +79,23 @@ export default function Config() {
       </div>
       <Tabs defaultValue="profile" className="space-y-6">
         <TabsList className="bg-slate-100 border border-slate-200 flex-wrap h-auto">
-          <TabsTrigger
-            value="profile"
-            className="data-[state=active]:bg-white data-[state=active]:text-blue-600"
-          >
+          <TabsTrigger value="profile" className={tabCls}>
             <User className="w-4 h-4 mr-2" /> Meu Perfil
           </TabsTrigger>
-          <TabsTrigger
-            value="security"
-            className="data-[state=active]:bg-white data-[state=active]:text-blue-600"
-          >
+          <TabsTrigger value="security" className={tabCls}>
             <Lock className="w-4 h-4 mr-2" /> Segurança
           </TabsTrigger>
-          <TabsTrigger
-            value="preferences"
-            className="data-[state=active]:bg-white data-[state=active]:text-blue-600"
-          >
+          <TabsTrigger value="preferences" className={tabCls}>
             <Settings className="w-4 h-4 mr-2" /> Preferências
           </TabsTrigger>
-          <TabsTrigger
-            value="contas"
-            className="data-[state=active]:bg-white data-[state=active]:text-blue-600"
-          >
+          <TabsTrigger value="contas" className={tabCls}>
             <Wallet className="w-4 h-4 mr-2" /> Contas
           </TabsTrigger>
-          <TabsTrigger
-            value="cartoes"
-            className="data-[state=active]:bg-white data-[state=active]:text-blue-600"
-          >
-            <CreditCard className="w-4 h-4 mr-2" /> Cartões de Crédito
+          <TabsTrigger value="cartoes" className={tabCls}>
+            <CreditCard className="w-4 h-4 mr-2" /> Cartões
+          </TabsTrigger>
+          <TabsTrigger value="usuarios" className={tabCls}>
+            <Users className="w-4 h-4 mr-2" /> Usuários
           </TabsTrigger>
         </TabsList>
 
@@ -63,13 +103,41 @@ export default function Config() {
           <Card className="border-slate-200">
             <CardHeader>
               <CardTitle>Informações Pessoais</CardTitle>
-              <CardDescription>Atualize os dados da sua conta de acesso.</CardDescription>
+              <CardDescription>Atualize seus dados e foto de perfil.</CardDescription>
             </CardHeader>
             <CardContent>
-              <form onSubmit={handleSave} className="space-y-4 max-w-md">
+              <form onSubmit={saveProfile} className="space-y-4 max-w-md">
+                <div className="flex items-center gap-4">
+                  <Avatar className="w-20 h-20 border-2 border-slate-200">
+                    {avatarPreview && <AvatarImage src={avatarPreview} alt="Preview" />}
+                    {!avatarPreview && avatarUrl && (
+                      <AvatarImage src={avatarUrl} alt={user?.name} />
+                    )}
+                    <AvatarFallback className="bg-blue-100 text-blue-700 text-xl">
+                      {user?.name?.charAt(0).toUpperCase() || 'U'}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div>
+                    <input
+                      ref={fileRef}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={onAvatarChange}
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => fileRef.current?.click()}
+                    >
+                      <Camera className="w-4 h-4 mr-2" /> Alterar Foto
+                    </Button>
+                    {avatarFile && <p className="text-xs text-slate-500 mt-1">{avatarFile.name}</p>}
+                  </div>
+                </div>
                 <div className="space-y-2">
                   <Label>Nome Completo</Label>
-                  <Input defaultValue={user?.name || ''} />
+                  <Input value={name} onChange={(e) => setName(e.target.value)} />
                 </div>
                 <div className="space-y-2">
                   <Label>E-mail Corporativo</Label>
@@ -78,7 +146,7 @@ export default function Config() {
                     Para alterar seu e-mail contate o administrador do sistema.
                   </p>
                 </div>
-                <Button type="submit" className="bg-blue-600 hover:bg-blue-700">
+                <Button type="submit" className={btnCls}>
                   Salvar Alterações
                 </Button>
               </form>
@@ -93,20 +161,28 @@ export default function Config() {
               <CardDescription>Recomendamos o uso de senhas fortes e exclusivas.</CardDescription>
             </CardHeader>
             <CardContent>
-              <form onSubmit={handleSave} className="space-y-4 max-w-md">
-                <div className="space-y-2">
-                  <Label>Senha Atual</Label>
-                  <Input type="password" />
-                </div>
+              <form onSubmit={savePassword} className="space-y-4 max-w-md">
                 <div className="space-y-2">
                   <Label>Nova Senha</Label>
-                  <Input type="password" />
+                  <Input
+                    type="password"
+                    required
+                    minLength={8}
+                    value={newPass}
+                    onChange={(e) => setNewPass(e.target.value)}
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label>Confirmar Nova Senha</Label>
-                  <Input type="password" />
+                  <Input
+                    type="password"
+                    required
+                    minLength={8}
+                    value={confirmPass}
+                    onChange={(e) => setConfirmPass(e.target.value)}
+                  />
                 </div>
-                <Button type="submit" className="bg-blue-600 hover:bg-blue-700">
+                <Button type="submit" className={btnCls}>
                   Atualizar Senha
                 </Button>
               </form>
@@ -135,7 +211,10 @@ export default function Config() {
                 </div>
                 <Switch disabled />
               </div>
-              <Button onClick={handleSave} className="bg-blue-600 hover:bg-blue-700">
+              <Button
+                onClick={() => toast({ title: 'Preferências atualizadas com sucesso.' })}
+                className={btnCls}
+              >
                 Salvar Preferências
               </Button>
             </CardContent>
@@ -166,6 +245,20 @@ export default function Config() {
             </CardHeader>
             <CardContent>
               <CreditCardsManager />
+            </CardContent>
+          </Card>
+        </TabsContent>
+        <TabsContent value="usuarios">
+          <Card className="border-slate-200">
+            <CardHeader>
+              <CardTitle>Gestão de Usuários</CardTitle>
+              <CardDescription>
+                Cadastre e gerencie os usuários do sistema. Novos usuários recebem a senha padrão
+                Skip@Pass.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <UsersManager />
             </CardContent>
           </Card>
         </TabsContent>
